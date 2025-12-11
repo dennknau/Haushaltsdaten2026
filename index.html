@@ -1,29 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Interaktive Haushaltsdaten</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-
-<h1>Haushaltsdaten</h1>
-
-<label>Bitte Gruppe auswählen:</label>
-<select id="gruppenFilter"></select>
-
-<canvas id="chart1" width="400" height="200"></canvas>
-
 <script>
 async function loadData() {
-    // JSON-Datei laden (liegt gleich neben index.html)
     const response = await fetch('haushalt.json');
     const data = await response.json();
+    console.log("Erster Datensatz:", data[0]); // Debug-Ausgabe
     return data;
 }
 
 loadData().then(data => {
-    // 1. Alle Gruppen sammeln
+    // Alle Gruppen aus der Spalte "gruppe" einsammeln
     const gruppen = [...new Set(data.map(d => d.gruppe))];
 
     const select = document.getElementById('gruppenFilter');
@@ -34,22 +18,39 @@ loadData().then(data => {
         select.appendChild(opt);
     });
 
-    // 2. Standard-Anzeige
+    // Start: erste Gruppe anzeigen
     drawChartFor(gruppen[0], data);
 
-    // 3. Beim Wechsel: neu zeichnen
+    // Beim Wechsel neu zeichnen
     select.addEventListener('change', () => {
         drawChartFor(select.value, data);
     });
 });
+
+// Betrag (Spalte "betrag") in eine Zahl verwandeln
+function parseBetrag(raw) {
+    if (raw === null || raw === undefined) return 0;
+
+    raw = String(raw).trim();
+    // Eurozeichen & Leerzeichen entfernen
+    raw = raw.replace('€', '').replace(/\s/g, '');
+    // Tausenderpunkte entfernen, Komma in Punkt umwandeln
+    raw = raw.replace(/\./g, '').replace(',', '.');
+
+    const num = Number(raw);
+    return isNaN(num) ? 0 : num;
+}
 
 function drawChartFor(gruppe, data) {
     const ctx = document.getElementById('chart1').getContext('2d');
 
     const filtered = data.filter(d => d.gruppe === gruppe);
 
-    const labels = filtered.map(d => d.sachkonto);
-    const values = filtered.map(d => d.betrag);
+    const labels = filtered.map(d => d.sachkonto || d['SK & Bezeichnung'] || 'ohne Bezeichnung');
+    const values = filtered.map(d => parseBetrag(d.betrag));
+
+    console.log("Zeichne Gruppe:", gruppe, "Anzahl:", filtered.length);
+    console.log("Beispielwerte:", values.slice(0, 5));
 
     if (window.myChart) {
         window.myChart.destroy();
@@ -63,10 +64,14 @@ function drawChartFor(gruppe, data) {
                 label: '€ nach HH',
                 data: values
             }]
+        },
+        options: {
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
         }
     });
 }
 </script>
-
-</body>
-</html>
