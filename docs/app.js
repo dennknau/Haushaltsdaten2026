@@ -51,7 +51,7 @@ function filterRows(rows, gruppen) {
   return rows.filter(r => set.has(String(r.gruppe)));
 }
 
-/* ---------- Aggregation ---------- */
+/* ---------- Aggregation (Kontogruppe) ---------- */
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
@@ -73,27 +73,33 @@ function aggregateByKontogruppe(rows) {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
     return a.kontogruppe.localeCompare(b.kontogruppe, "de");
   });
 }
 
 /* ---------- Overview ---------- */
+/* Hinweis: Berechnung bleibt wie bisher:
+   - Erträge gesamt: Erträge ohne 91
+   - Aufwendungen gesamt: Aufwendungen ohne 92
+   Wenn du wirklich ALLE willst, sag kurz Bescheid, dann entferne ich die Filter. */
 function computeOverviewTotals(rows) {
-  let ertraegeOhne91 = 0;
-  let aufwendungenOhne92 = 0;
+  let ertraege = 0;
+  let aufwendungen = 0;
 
   for (const r of rows) {
     const betrag = r.betrag;
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
-    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) ertraegeOhne91 += -betrag;
-    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) aufwendungenOhne92 += betrag;
+    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) ertraege += -betrag;
+    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) aufwendungen += betrag;
   }
 
   return {
-    ertraegeOhne91,
-    aufwendungenOhne92,
-    ergebnis: aufwendungenOhne92 - ertraegeOhne91,
+    ertraege,
+    aufwendungen,
+    ergebnis: aufwendungen - ertraege,
   };
 }
 
@@ -104,11 +110,10 @@ function setBarWidth(barEl, value, maxValue) {
 }
 
 function renderOverview(o) {
-  document.getElementById("sumErtrag").textContent = fmtEUR(o.ertraegeOhne91);
-  document.getElementById("sumAufwand").textContent = fmtEUR(o.aufwendungenOhne92);
+  document.getElementById("sumErtrag").textContent = fmtEUR(o.ertraege);
+  document.getElementById("sumAufwand").textContent = fmtEUR(o.aufwendungen);
 
   const ergebnisEl = document.getElementById("sumErgebnis");
-
   let label = "Ausgeglichen";
   let displayValue = 0;
 
@@ -122,34 +127,49 @@ function renderOverview(o) {
 
   ergebnisEl.innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
 
-  const maxAbs = Math.max(
-    Math.abs(o.ertraegeOhne91),
-    Math.abs(o.aufwendungenOhne92),
-    Math.abs(o.ergebnis),
-    1
-  );
-
-  setBarWidth(document.getElementById("barErtrag"), o.ertraegeOhne91, maxAbs);
-  setBarWidth(document.getElementById("barAufwand"), o.aufwendungenOhne92, maxAbs);
+  const maxAbs = Math.max(Math.abs(o.ertraege), Math.abs(o.aufwendungen), Math.abs(o.ergebnis), 1);
+  setBarWidth(document.getElementById("barErtrag"), o.ertraege, maxAbs);
+  setBarWidth(document.getElementById("barAufwand"), o.aufwendungen, maxAbs);
   setBarWidth(document.getElementById("barErgebnis"), o.ergebnis, maxAbs);
 }
 
 /* ---------- Tabelle ---------- */
 function renderTable(data) {
+  const kgSorter = (a, b) => {
+    const na = kontogruppeNum(a);
+    const nb = kontogruppeNum(b);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na)) return -1;
+    if (!isNaN(nb)) return 1;
+    return String(a).localeCompare(String(b), "de");
+  };
+
   if (!table) {
     table = new Tabulator("#table", {
       data,
       layout: "fitColumns",
-      height: "520px",
+      // ✅ passt sich automatisch an die Tabellenhöhe an
+      height: false,
       columns: [
-        { title: "Kontogruppe", field: "kontogruppe", widthGrow: 3 },
-        { title: "Aufwendungen", field: "aufwendungen", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Saldo", field: "saldo", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        {
+          title: "Kontogruppe",
+          field: "kontogruppe",
+          sorter: kgSorter,
+          headerFilter: "input",
+          widthGrow: 3,
+        },
+        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Saldo", field: "saldo", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
       ],
+      // optional: damit die Tabelle nicht ewig hoch wird, wenn sehr viele Zeilen:
+      // maxHeight: "70vh",
     });
+
+    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
   } else {
     table.replaceData(data);
+    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
   }
 }
 
@@ -174,6 +194,7 @@ async function main() {
     sel.appendChild(o);
   });
 
+  // ✅ sofort beim Klick/Ändern aktualisieren
   sel.addEventListener("change", rerender);
 
   document.getElementById("btnAll").onclick = () => {

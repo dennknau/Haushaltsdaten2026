@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Haushaltsplan – Interaktiv</title>
+  <title>Interaktiver Haushaltsplan der Gemeinde Jesberg</title>
 
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
@@ -56,7 +56,6 @@
       cursor: pointer;
       font-family: inherit;
     }
-
     button:hover { background: #f2f2f2; }
 
     .hint { color: #555; font-size: 0.9rem; }
@@ -95,11 +94,11 @@
 </head>
 
 <body>
-  <h1>Haushaltsplan</h1>
+  <h1>Interaktiver Haushaltsplan der Gemeinde Jesberg</h1>
 
   <header class="card">
     <div>
-      <label for="gruppeSelect">Kostenstellen (gruppe) filtern</label>
+      <label for="gruppeSelect">Kostenstellen filtern</label>
       <select id="gruppeSelect" multiple></select>
       <div class="hint">Mehrfachauswahl: Strg/Cmd halten · Keine Auswahl = alle</div>
     </div>
@@ -123,12 +122,12 @@
       </thead>
       <tbody>
         <tr>
-          <td>Erträge gesamt (ohne 91)</td>
+          <td>Erträge gesamt</td>
           <td><div class="barWrap"><div id="barErtrag" class="bar green"></div></div></td>
           <td id="sumErtrag" class="num">–</td>
         </tr>
         <tr>
-          <td>Aufwendungen gesamt (ohne 92)</td>
+          <td>Aufwendungen gesamt</td>
           <td><div class="barWrap"><div id="barAufwand" class="bar red"></div></div></td>
           <td id="sumAufwand" class="num">–</td>
         </tr>
@@ -142,7 +141,7 @@
   </div>
 
   <div class="card">
-    <h2>Tabelle (nach kontogruppe)</h2>
+    <h2>Ergebnisübersicht</h2>
     <div id="table"></div>
   </div>
 
