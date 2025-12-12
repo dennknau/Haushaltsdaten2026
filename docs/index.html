@@ -9,7 +9,7 @@
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 
-  <!-- Plotly (für Kreisdiagramme) -->
+  <!-- Plotly -->
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <style>
@@ -31,24 +31,34 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
 
-    header {
+    /* Filter untereinander */
+    .filters {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 520px;
+    }
+
+    .filterRow {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 16px;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
       align-items: end;
     }
 
     label { font-weight: 600; display:block; margin-bottom: 6px; }
+
     select { width: 100%; font-family: inherit; }
-    select.multi { min-height: 140px; }
+    select.multi { min-height: 150px; }
 
     button {
-      padding: 8px 14px;
+      padding: 8px 12px;
       border-radius: 10px;
       border: 1px solid #ddd;
       background: #fff;
       cursor: pointer;
       font-family: inherit;
+      white-space: nowrap;
     }
     button:hover { background: #f2f2f2; }
 
@@ -76,28 +86,36 @@
 <body>
   <h1>Interaktiver Haushaltsplan der Gemeinde Jesberg</h1>
 
-  <header class="card">
-    <div>
-      <label for="jahrSelect">Jahr</label>
-      <select id="jahrSelect"></select>
-    </div>
+  <div class="card">
+    <div class="filters">
+      <div class="filterRow">
+        <div>
+          <label for="jahrSelect">Jahr</label>
+          <select id="jahrSelect"></select>
+        </div>
+        <button id="resetJahr" type="button">Zurücksetzen</button>
+      </div>
 
-    <div>
-      <label for="gruppe1Select">Gruppe 1</label>
-      <select id="gruppe1Select"></select>
-    </div>
+      <div class="filterRow">
+        <div>
+          <label for="gruppe1Select">Gruppe 1</label>
+          <select id="gruppe1Select"></select>
+        </div>
+        <button id="resetGruppe1" type="button">Zurücksetzen</button>
+      </div>
 
-    <div>
-      <label for="gruppeSelect">Kostenstellen</label>
-      <select id="gruppeSelect" class="multi" multiple></select>
-      <div class="hint">Mehrfachauswahl: Strg/Cmd halten · Keine Auswahl = alle</div>
-    </div>
+      <div class="filterRow">
+        <div>
+          <label for="gruppeSelect">Kostenstellen</label>
+          <select id="gruppeSelect" class="multi" multiple></select>
+          <div class="hint">Mehrfachauswahl: Strg/Cmd halten · Keine Auswahl = alle</div>
+        </div>
+        <button id="resetGruppe" type="button">Zurücksetzen</button>
+      </div>
 
-    <div>
-      <button id="btnAll" type="button">Alle Kostenstellen</button>
-      <div class="hint" id="status" style="margin-top:8px;"></div>
+      <div class="hint" id="status"></div>
     </div>
-  </header>
+  </div>
 
   <div class="card">
     <h2>Gesamtübersicht</h2>
