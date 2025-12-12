@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Haushaltsplan – Interaktiv</title>
 
+  <!-- Tabulator (Tabelle) -->
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+
+  <!-- Plotly (Diagramm) -->
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 
@@ -14,8 +17,10 @@
     header { display:flex; gap:16px; align-items:end; flex-wrap:wrap; }
     .card { border:1px solid #e5e5e5; border-radius:12px; padding:16px; margin-top:16px; }
     label { font-weight:600; display:block; margin-bottom:6px; }
-    select { min-width: 320px; min-height: 120px; }
+    select { min-width: 340px; min-height: 140px; }
     .hint { color:#666; font-size: 0.95rem; }
+    button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; }
+    button:hover { background: #f6f6f6; }
   </style>
 </head>
 <body>
@@ -25,19 +30,24 @@
     <div>
       <label for="gruppeSelect">Kostenstellen (gruppe) filtern</label>
       <select id="gruppeSelect" multiple></select>
-      <div class="hint">Mehrfachauswahl: Strg/Cmd halten. Leer = alle.</div>
+      <div class="hint">Mehrfachauswahl: Strg/Cmd halten. Keine Auswahl = alle.</div>
     </div>
+
     <div>
-      <button id="btnAll">Alle anzeigen</button>
-      <button id="btnApply">Filter anwenden</button>
+      <button id="btnAll" type="button">Alle anzeigen</button>
+      <button id="btnApply" type="button">Filter anwenden</button>
     </div>
+
+    <div class="hint" id="status"></div>
   </header>
 
+  <!-- ✅ Tabelle oben -->
   <div class="card">
     <h2>Tabelle (nach kontogruppe)</h2>
     <div id="table"></div>
   </div>
 
+  <!-- ✅ Diagramm darunter -->
   <div class="card">
     <h2>Diagramm (nach kontogruppe)</h2>
     <div id="chart" style="height:520px;"></div>

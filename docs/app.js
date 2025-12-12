@@ -34,8 +34,14 @@ function kontogruppeNum(kg) {
   return m ? parseInt(m[1], 10) : NaN;
 }
 
+function setStatus(text) {
+  const el = document.getElementById("status");
+  if (el) el.textContent = text ?? "";
+}
+
 function getSelectedGruppen() {
   const sel = document.getElementById("gruppeSelect");
+  if (!sel) return [];
   return [...sel.selectedOptions].map(o => o.value);
 }
 
@@ -46,11 +52,10 @@ function filterRows(rows, selectedGruppen) {
 }
 
 /**
- * Aggregation:
- * - Ergebnis pro kontogruppe:
- *   aufwendungen = Summe positiver Beträge
- *   ertraege     = Summe negativer Beträge (bleibt negativ)
- *   saldo        = Summe gesamt
+ * Aggregation pro kontogruppe:
+ * - aufwendungen: Summe positiver Beträge
+ * - ertraege:     Summe negativer Beträge (bleibt negativ)
+ * - saldo:        Summe gesamt
  */
 function aggregateByKontogruppe(rows) {
   const m = new Map();
@@ -65,13 +70,13 @@ function aggregateByKontogruppe(rows) {
     const obj = m.get(kg);
 
     if (betrag >= 0) obj.aufwendungen += betrag;
-    else obj.ertraege += betrag; // negativ
+    else obj.ertraege += betrag;
     obj.saldo += betrag;
   }
 
   const out = [...m.values()];
 
-  // ✅ Korrekte Sortierung für Chart (und grundsätzlich)
+  // ✅ korrekte numerische Sortierung (1..9, 10..)
   out.sort((a, b) => {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
@@ -109,7 +114,7 @@ function renderTable(agg) {
           field: "kontogruppe",
           headerFilter: "input",
           widthGrow: 3,
-          sorter: kgSorter, // ✅ numerische Sortierung in Tabulator
+          sorter: kgSorter, // ✅ auch in Tabulator numerisch sortieren
         },
         {
           title: "Aufwendungen",
@@ -135,7 +140,7 @@ function renderTable(agg) {
       ],
     });
 
-    // ✅ Erzwingt unsere Sortierung nach dem initialen Rendern
+    // ✅ Sortierung erzwingen (weil initialSort bei custom sorter manchmal nicht greift)
     table.setSort([{ column: "kontogruppe", dir: "asc" }]);
   } else {
     table.replaceData(agg);
@@ -183,6 +188,9 @@ function rerender() {
   const selected = getSelectedGruppen();
   const filtered = filterRows(raw, selected);
   const agg = aggregateByKontogruppe(filtered);
+
+  setStatus(`Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`);
+
   renderTable(agg);
   renderChart(agg);
 }
@@ -190,8 +198,9 @@ function rerender() {
 function populateGruppenSelect(rows) {
   const gruppen = uniqueSorted(rows.map(r => r.gruppe));
   const sel = document.getElementById("gruppeSelect");
-  sel.innerHTML = "";
+  if (!sel) return;
 
+  sel.innerHTML = "";
   for (const g of gruppen) {
     const opt = document.createElement("option");
     opt.value = g;
@@ -201,12 +210,15 @@ function populateGruppenSelect(rows) {
 }
 
 async function main() {
-  raw = await fetch(DATA_URL).then(r => {
-    if (!r.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${r.status})`);
-    return r.json();
-  });
+  const res = await fetch(DATA_URL);
+  if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${res.status})`);
 
-  // Beträge normalisieren (String "400,00" -> Zahl 400.00)
+  raw = await res.json();
+  if (!Array.isArray(raw)) {
+    throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
+  }
+
+  // Beträge normalisieren
   raw = raw.map(r => ({
     ...r,
     betrag: parseGermanNumber(r.betrag),
@@ -214,13 +226,20 @@ async function main() {
 
   populateGruppenSelect(raw);
 
-  document.getElementById("btnAll").addEventListener("click", () => {
-    const sel = document.getElementById("gruppeSelect");
-    [...sel.options].forEach(o => (o.selected = false));
-    rerender();
-  });
+  const btnAll = document.getElementById("btnAll");
+  const btnApply = document.getElementById("btnApply");
+  const sel = document.getElementById("gruppeSelect");
 
-  document.getElementById("btnApply").addEventListener("click", rerender);
+  if (btnAll) {
+    btnAll.addEventListener("click", () => {
+      if (sel) [...sel.options].forEach(o => (o.selected = false));
+      rerender();
+    });
+  }
+
+  if (btnApply) {
+    btnApply.addEventListener("click", rerender);
+  }
 
   rerender();
 }
