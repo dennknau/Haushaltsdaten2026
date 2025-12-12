@@ -1,7 +1,7 @@
 const DATA_URL = "./haushalt.json";
 
 let raw = [];
-let table;
+let tab = null; // ✅ Tabulator-Instanz (nicht "table")
 
 /* ---------- Helper ---------- */
 function fmtEUR(n) {
@@ -12,7 +12,8 @@ function parseGermanNumber(value) {
   if (value === null || value === undefined) return 0;
   const s = String(value).trim();
   if (s === "") return 0;
-  return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function kontogruppeNum(kg) {
@@ -65,6 +66,7 @@ function aggregateByKontogruppe(rows) {
     if (!map.has(kg)) map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0 });
     const o = map.get(kg);
 
+    // Vorzeichenlogik
     if (istErtrag) o.ertraege += -betrag;
     else o.aufwendungen += betrag;
   }
@@ -131,27 +133,30 @@ function renderTable(data) {
     return String(a).localeCompare(String(b), "de");
   };
 
-  if (!table) {
-    table = new Tabulator("#table", {
+  if (!tab) {
+    tab = new Tabulator("#table", {
       data,
       layout: "fitColumns",
       height: false,
       columns: [
         { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
-        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()) },
       ],
     });
-    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
+
+    // optional: nur wenn vorhanden
+    tab.setSort?.([{ column: "kontogruppe", dir: "asc" }]);
   } else {
-    table.replaceData(data);
-    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
+    tab.replaceData(data);
+    tab.setSort?.([{ column: "kontogruppe", dir: "asc" }]);
   }
 }
 
 /* ---------- Kreisdiagramme ---------- */
 function renderPies(agg) {
-  // Wenn Plotly noch nicht da ist (sollte nicht passieren), abbrechen
   if (typeof Plotly === "undefined") return;
 
   const elE = document.getElementById("pieErtraege");
@@ -160,18 +165,14 @@ function renderPies(agg) {
 
   const labels = agg.map(d => d.kontogruppe);
 
-  // Plotly Pie braucht >= 0; negative Werte (Vorzeichenfehler) kappen wir auf 0
+  // Pie braucht >= 0
   const valuesErtraege = agg.map(d => Math.max(0, d.ertraege));
   const valuesAufwand = agg.map(d => Math.max(0, d.aufwendungen));
 
   const ertragPairs = labels.map((l, i) => [l, valuesErtraege[i]]).filter(([, v]) => v > 0);
   const aufwandPairs = labels.map((l, i) => [l, valuesAufwand[i]]).filter(([, v]) => v > 0);
 
-  const layout = {
-    margin: { l: 10, r: 10, t: 10, b: 10 },
-    showlegend: true,
-    legend: { orientation: "v" },
-  };
+  const layout = { margin: { l: 10, r: 10, t: 10, b: 10 }, showlegend: true };
 
   Plotly.react(
     elE,
@@ -209,12 +210,12 @@ function rerender() {
   const agg = aggregateByKontogruppe(filtered);
   renderTable(agg);
 
-  // ✅ Fix: Pies erst rendern, wenn Layout sicher steht
+  // Pies zuverlässig nach Layout rendern
   requestAnimationFrame(() => renderPies(agg));
   setTimeout(() => renderPies(agg), 0);
 
-  document.getElementById("status").textContent =
-    `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
+  const status = document.getElementById("status");
+  if (status) status.textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
 }
 
 /* ---------- Init ---------- */
@@ -237,10 +238,8 @@ async function main() {
     rerender();
   };
 
-  // ✅ initial render
   rerender();
 
-  // Optional: bei Resize neu zeichnen (Plotly responsive ist an, aber das hilft manchmal zusätzlich)
   window.addEventListener("resize", () => {
     const agg = aggregateByKontogruppe(filterRows(raw, getSelectedGruppen()));
     renderPies(agg);
