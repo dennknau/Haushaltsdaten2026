@@ -63,16 +63,12 @@ function aggregateByKontogruppe(rows) {
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
     if (!map.has(kg)) {
-      map.set(kg, {
-        kontogruppe: kg,
-        aufwendungen: 0,
-        ertraege: 0,
-      });
+      map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0 });
     }
 
     const o = map.get(kg);
 
-    // Vorzeichenlogik
+    // Vorzeichenlogik:
     if (istErtrag) o.ertraege += -betrag;
     else o.aufwendungen += betrag;
   }
@@ -96,13 +92,8 @@ function computeOverviewTotals(rows) {
     const betrag = r.betrag;
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
-    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) {
-      ertraege += -betrag;
-    }
-
-    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) {
-      aufwendungen += betrag;
-    }
+    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) ertraege += -betrag;
+    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) aufwendungen += betrag;
   }
 
   return {
@@ -137,19 +128,13 @@ function renderOverview(o) {
 
   ergebnisEl.innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
 
-  const maxAbs = Math.max(
-    Math.abs(o.ertraege),
-    Math.abs(o.aufwendungen),
-    Math.abs(o.ergebnis),
-    1
-  );
-
+  const maxAbs = Math.max(Math.abs(o.ertraege), Math.abs(o.aufwendungen), Math.abs(o.ergebnis), 1);
   setBarWidth(document.getElementById("barErtrag"), o.ertraege, maxAbs);
   setBarWidth(document.getElementById("barAufwand"), o.aufwendungen, maxAbs);
   setBarWidth(document.getElementById("barErgebnis"), o.ergebnis, maxAbs);
 }
 
-/* ---------- Tabelle: Ergebnisübersicht (OHNE Saldo) ---------- */
+/* ---------- Tabelle: Ergebnisübersicht (ohne Saldo) ---------- */
 function renderTable(data) {
   const kgSorter = (a, b) => {
     const na = kontogruppeNum(a);
@@ -197,24 +182,74 @@ function renderTable(data) {
   }
 }
 
+/* ---------- NEU: Kreisdiagramme ---------- */
+function renderPies(agg) {
+  const labels = agg.map(d => d.kontogruppe);
+
+  // Pie braucht >= 0; negative Werte (durch Vorzeichenfehler) kappen wir auf 0
+  const valuesErtraege = agg.map(d => Math.max(0, d.ertraege));
+  const valuesAufwand = agg.map(d => Math.max(0, d.aufwendungen));
+
+  // nur Einträge mit Wert > 0 (sonst viele Null-Segmente)
+  const ertragPairs = labels
+    .map((l, i) => [l, valuesErtraege[i]])
+    .filter(([, v]) => v > 0);
+
+  const aufwandPairs = labels
+    .map((l, i) => [l, valuesAufwand[i]])
+    .filter(([, v]) => v > 0);
+
+  const pieLayoutBase = {
+    margin: { l: 10, r: 10, t: 10, b: 10 },
+    showlegend: true,
+    legend: { orientation: "v" },
+  };
+
+  Plotly.newPlot(
+    "pieErtraege",
+    [{
+      type: "pie",
+      labels: ertragPairs.map(p => p[0]),
+      values: ertragPairs.map(p => p[1]),
+      textinfo: "percent",
+      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
+    }],
+    pieLayoutBase,
+    { responsive: true }
+  );
+
+  Plotly.newPlot(
+    "pieAufwendungen",
+    [{
+      type: "pie",
+      labels: aufwandPairs.map(p => p[0]),
+      values: aufwandPairs.map(p => p[1]),
+      textinfo: "percent",
+      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
+    }],
+    pieLayoutBase,
+    { responsive: true }
+  );
+}
+
 /* ---------- Render ---------- */
 function rerender() {
   const filtered = filterRows(raw, getSelectedGruppen());
 
-  renderOverview(computeOverviewTotals(filtered));
-  renderTable(aggregateByKontogruppe(filtered));
+  const overview = computeOverviewTotals(filtered);
+  renderOverview(overview);
 
-  document.getElementById("status").textContent =
-    `Zeilen: ${filtered.length}`;
+  const agg = aggregateByKontogruppe(filtered);
+  renderTable(agg);
+  renderPies(agg);
+
+  document.getElementById("status").textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
 }
 
 /* ---------- Init ---------- */
 async function main() {
   const res = await fetch(DATA_URL);
-  raw = (await res.json()).map(r => ({
-    ...r,
-    betrag: parseGermanNumber(r.betrag),
-  }));
+  raw = (await res.json()).map(r => ({ ...r, betrag: parseGermanNumber(r.betrag) }));
 
   const sel = document.getElementById("gruppeSelect");
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {

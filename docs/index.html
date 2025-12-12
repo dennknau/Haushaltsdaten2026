@@ -5,8 +5,12 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Interaktiver Haushaltsplan der Gemeinde Jesberg</title>
 
+  <!-- Tabulator -->
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+
+  <!-- Plotly (für Kreisdiagramme) -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <style>
     body {
@@ -90,6 +94,17 @@
     .rowTitle { width: 34%; }
     .rowBar { width: 46%; }
     .rowNum { width: 20%; }
+
+    /* Pies */
+    .pieGrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .pieGrid { grid-template-columns: 1fr; }
+    }
+    .pieBox { height: 420px; }
   </style>
 </head>
 
@@ -143,6 +158,21 @@
   <div class="card">
     <h2>Ergebnisübersicht</h2>
     <div id="table"></div>
+  </div>
+
+  <!-- ✅ NEU: 2 Kreisdiagramme -->
+  <div class="card">
+    <h2>Kreisdiagramme nach Kontogruppe</h2>
+    <div class="pieGrid">
+      <div>
+        <div class="hint" style="margin-bottom:8px;">Erträge nach Kontogruppe</div>
+        <div id="pieErtraege" class="pieBox"></div>
+      </div>
+      <div>
+        <div class="hint" style="margin-bottom:8px;">Aufwendungen nach Kontogruppe</div>
+        <div id="pieAufwendungen" class="pieBox"></div>
+      </div>
+    </div>
   </div>
 
   <script src="./app.js"></script>
