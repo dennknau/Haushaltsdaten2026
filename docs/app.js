@@ -3,11 +3,9 @@ const DATA_URL = "./haushalt.json";
 let raw = [];
 let tab = null;
 
-/* ---------- Feldzugriff (robust für Jahr/jahr etc.) ---------- */
+/* ---------- Feldzugriff (robust) ---------- */
 function getField(r, ...keys) {
-  for (const k of keys) {
-    if (r && r[k] !== undefined && r[k] !== null) return r[k];
-  }
+  for (const k of keys) if (r && r[k] !== undefined && r[k] !== null) return r[k];
   return "";
 }
 
@@ -24,16 +22,16 @@ function parseGermanNumber(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function kontogruppeNum(kg) {
-  const m = String(kg ?? "").match(/^\s*(\d+)/);
-  return m ? parseInt(m[1], 10) : NaN;
-}
-
 function uniqueSorted(arr) {
   return [...new Set(arr)]
     .map(v => String(v ?? "").trim())
     .filter(v => v !== "")
     .sort((a, b) => a.localeCompare(b, "de"));
+}
+
+function kontogruppeNum(kg) {
+  const m = String(kg ?? "").match(/^\s*(\d+)/);
+  return m ? parseInt(m[1], 10) : NaN;
 }
 
 function extractSachkontoNumber(sachkonto) {
@@ -47,54 +45,40 @@ function isErtragBySachkonto(sachkonto) {
 }
 
 /* ---------- UI Getter ---------- */
-function getSelectedValue(id) {
-  const el = document.getElementById(id);
-  return el ? el.value : "";
-}
-function getSelectedMulti(id) {
-  const el = document.getElementById(id);
-  return el ? [...el.selectedOptions].map(o => o.value) : [];
-}
+function $id(id) { return document.getElementById(id); }
+function getSelectedValue(id) { const el = $id(id); return el ? el.value : ""; }
+function getSelectedMulti(id) { const el = $id(id); return el ? [...el.selectedOptions].map(o => o.value) : []; }
 
-/* ---------- Filterkaskade: Jahr -> gruppe1 -> gruppe ---------- */
 function fillSelect(el, values) {
   el.innerHTML = "";
   values.forEach(v => el.add(new Option(v, v)));
 }
 
+/* ---------- Kaskade ---------- */
 function rebuildGruppe1Options() {
   const jahr = getSelectedValue("jahrSelect");
-  const g1Select = document.getElementById("gruppe1Select");
+  const g1Select = $id("gruppe1Select");
 
-  const g1Values = uniqueSorted(
-    raw
-      .filter(r => String(r.jahr) === String(jahr))
-      .map(r => r.gruppe1)
-  );
-
+  const g1Values = uniqueSorted(raw.filter(r => r.jahr === jahr).map(r => r.gruppe1));
   fillSelect(g1Select, g1Values);
+
   if (g1Values.length) g1Select.value = g1Values[0];
 }
 
 function rebuildGruppeOptions() {
   const jahr = getSelectedValue("jahrSelect");
   const g1 = getSelectedValue("gruppe1Select");
-  const gruppeSelect = document.getElementById("gruppeSelect");
+  const gruppeSelect = $id("gruppeSelect");
 
   const gruppen = uniqueSorted(
-    raw
-      .filter(r => String(r.jahr) === String(jahr) && String(r.gruppe1) === String(g1))
-      .map(r => r.gruppe)
+    raw.filter(r => r.jahr === jahr && r.gruppe1 === g1).map(r => r.gruppe)
   );
 
   gruppeSelect.innerHTML = "";
-  for (const g of gruppen) {
-    const opt = new Option(g, g);
-    gruppeSelect.add(opt);
-  }
+  gruppen.forEach(g => gruppeSelect.add(new Option(g, g)));
 }
 
-/* ---------- Aggregation nach Kontogruppe (für Tabelle + Pies) ---------- */
+/* ---------- Daten & Aggregation ---------- */
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
@@ -106,7 +90,6 @@ function aggregateByKontogruppe(rows) {
     if (!map.has(kg)) map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0 });
     const o = map.get(kg);
 
-    // Vorzeichenlogik
     if (istErtrag) o.ertraege += -betrag;
     else o.aufwendungen += betrag;
   }
@@ -121,7 +104,7 @@ function aggregateByKontogruppe(rows) {
   });
 }
 
-/* ---------- Gesamtübersicht ---------- */
+/* ---------- Übersicht ---------- */
 function setBarWidth(barEl, value, maxValue) {
   if (!barEl) return;
   const w = Math.min(100, (Math.abs(value) / Math.max(maxValue, 1)) * 100);
@@ -140,21 +123,20 @@ function renderOverview(rows) {
 
   const ergebnis = aufwendungen - ertraege;
 
-  document.getElementById("sumErtrag").textContent = fmtEUR(ertraege);
-  document.getElementById("sumAufwand").textContent = fmtEUR(aufwendungen);
+  $id("sumErtrag").textContent = fmtEUR(ertraege);
+  $id("sumAufwand").textContent = fmtEUR(aufwendungen);
 
-  // Ergebnis-Text: Überschuss/Defizit
   let label = "Ausgeglichen";
   let displayValue = 0;
   if (ergebnis < 0) { label = "Überschuss"; displayValue = Math.abs(ergebnis); }
   else if (ergebnis > 0) { label = "Defizit"; displayValue = ergebnis; }
 
-  document.getElementById("sumErgebnis").innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
+  $id("sumErgebnis").innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
 
   const maxAbs = Math.max(Math.abs(ertraege), Math.abs(aufwendungen), Math.abs(ergebnis), 1);
-  setBarWidth(document.getElementById("barErtrag"), ertraege, maxAbs);
-  setBarWidth(document.getElementById("barAufwand"), aufwendungen, maxAbs);
-  setBarWidth(document.getElementById("barErgebnis"), ergebnis, maxAbs);
+  setBarWidth($id("barErtrag"), ertraege, maxAbs);
+  setBarWidth($id("barAufwand"), aufwendungen, maxAbs);
+  setBarWidth($id("barErgebnis"), ergebnis, maxAbs);
 }
 
 /* ---------- Tabelle ---------- */
@@ -174,9 +156,9 @@ function renderTable(agg) {
       layout: "fitColumns",
       height: false,
       columns: [
-        { title: "kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
-        { title: "betrag (Aufwendungen)", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "betrag (Erträge)", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
+        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
       ],
     });
   } else {
@@ -188,13 +170,11 @@ function renderTable(agg) {
 function renderPies(agg) {
   if (typeof Plotly === "undefined") return;
 
-  const elE = document.getElementById("pieErtraege");
-  const elA = document.getElementById("pieAufwendungen");
+  const elE = $id("pieErtraege");
+  const elA = $id("pieAufwendungen");
   if (!elE || !elA) return;
 
   const labels = agg.map(d => d.kontogruppe);
-
-  // Pie braucht >= 0
   const valuesE = agg.map(d => Math.max(0, d.ertraege));
   const valuesA = agg.map(d => Math.max(0, d.aufwendungen));
 
@@ -203,43 +183,33 @@ function renderPies(agg) {
 
   const layout = { margin: { l: 10, r: 10, t: 10, b: 10 }, showlegend: true };
 
-  Plotly.react(
-    elE,
-    [{
-      type: "pie",
-      labels: ePairs.map(p => p[0]),
-      values: ePairs.map(p => p[1]),
-      textinfo: "percent",
-      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-    }],
-    layout,
-    { responsive: true }
-  );
+  Plotly.react(elE, [{
+    type: "pie",
+    labels: ePairs.map(p => p[0]),
+    values: ePairs.map(p => p[1]),
+    textinfo: "percent",
+    hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
+  }], layout, { responsive: true });
 
-  Plotly.react(
-    elA,
-    [{
-      type: "pie",
-      labels: aPairs.map(p => p[0]),
-      values: aPairs.map(p => p[1]),
-      textinfo: "percent",
-      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-    }],
-    layout,
-    { responsive: true }
-  );
+  Plotly.react(elA, [{
+    type: "pie",
+    labels: aPairs.map(p => p[0]),
+    values: aPairs.map(p => p[1]),
+    textinfo: "percent",
+    hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
+  }], layout, { responsive: true });
 }
 
-/* ---------- Zentrale Render-Funktion ---------- */
+/* ---------- Render ---------- */
 function rerender() {
   const jahr = getSelectedValue("jahrSelect");
   const g1 = getSelectedValue("gruppe1Select");
   const gruppen = getSelectedMulti("gruppeSelect");
 
   const filtered = raw.filter(r => {
-    const okJahr = String(r.jahr) === String(jahr);
-    const okG1 = String(r.gruppe1) === String(g1);
-    const okGruppe = gruppen.length ? gruppen.includes(String(r.gruppe)) : true;
+    const okJahr = r.jahr === jahr;
+    const okG1 = r.gruppe1 === g1;
+    const okGruppe = gruppen.length ? gruppen.includes(r.gruppe) : true;
     return okJahr && okG1 && okGruppe;
   });
 
@@ -248,12 +218,35 @@ function rerender() {
   const agg = aggregateByKontogruppe(filtered);
   renderTable(agg);
 
-  // Pies zuverlässig beim Laden
   requestAnimationFrame(() => renderPies(agg));
   setTimeout(() => renderPies(agg), 0);
 
-  const status = document.getElementById("status");
-  if (status) status.textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
+  $id("status").textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
+}
+
+/* ---------- Reset-Buttons ---------- */
+function resetJahrToDefault() {
+  const jahrSelect = $id("jahrSelect");
+  if (jahrSelect.options.length) jahrSelect.selectedIndex = 0;
+
+  rebuildGruppe1Options();
+  rebuildGruppeOptions();
+  clearKostenstellenSelection();
+  rerender();
+}
+
+function resetGruppe1ToDefault() {
+  const g1Select = $id("gruppe1Select");
+  if (g1Select.options.length) g1Select.selectedIndex = 0;
+
+  rebuildGruppeOptions();
+  clearKostenstellenSelection();
+  rerender();
+}
+
+function clearKostenstellenSelection() {
+  const gruppeSelect = $id("gruppeSelect");
+  [...gruppeSelect.options].forEach(o => (o.selected = false));
 }
 
 /* ---------- Init ---------- */
@@ -264,48 +257,50 @@ async function main() {
   const json = await res.json();
   if (!Array.isArray(json)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
 
-  // Normalisieren auf unsere internen Keys (jahr/gruppe1/gruppe/...)
+  // Normalisieren (Jahr kann groß geschrieben sein)
   raw = json.map(r => ({
     jahr: String(getField(r, "Jahr", "jahr")).trim(),
-    gruppe: String(getField(r, "gruppe", "Gruppe")).trim(),
-    gruppe1: String(getField(r, "gruppe1", "Gruppe1", "gruppe_1", "Gruppe_1")).trim(),
-    kontogruppe: String(getField(r, "kontogruppe", "KontoGruppe", "Kontogruppe")).trim(),
-    sachkonto: String(getField(r, "sachkonto", "Sachkonto")).trim(),
-    betrag: parseGermanNumber(getField(r, "betrag", "Betrag")),
+    gruppe: String(getField(r, "gruppe")).trim(),
+    gruppe1: String(getField(r, "gruppe1")).trim(),
+    kontogruppe: String(getField(r, "kontogruppe")).trim(),
+    sachkonto: String(getField(r, "sachkonto")).trim(),
+    betrag: parseGermanNumber(getField(r, "betrag")),
   }));
 
-  // Jahr-Select füllen
-  const jahrSelect = document.getElementById("jahrSelect");
+  // Jahr-Optionen
+  const jahrSelect = $id("jahrSelect");
   const jahre = uniqueSorted(raw.map(r => r.jahr));
   fillSelect(jahrSelect, jahre);
-  if (jahre.length) jahrSelect.value = jahre[0];
+  if (jahre.length) jahrSelect.selectedIndex = 0;
+
+  // Kaskade initial
+  rebuildGruppe1Options();
+  rebuildGruppeOptions();
 
   // Events
   jahrSelect.addEventListener("change", () => {
     rebuildGruppe1Options();
     rebuildGruppeOptions();
+    clearKostenstellenSelection();
     rerender();
   });
 
-  document.getElementById("gruppe1Select").addEventListener("change", () => {
+  $id("gruppe1Select").addEventListener("change", () => {
     rebuildGruppeOptions();
-    // Auswahl Kostenstellen leeren, weil neue Liste
-    const gruppeSelect = document.getElementById("gruppeSelect");
-    [...gruppeSelect.options].forEach(o => (o.selected = false));
+    clearKostenstellenSelection();
     rerender();
   });
 
-  document.getElementById("gruppeSelect").addEventListener("change", rerender);
+  $id("gruppeSelect").addEventListener("change", rerender);
 
-  document.getElementById("btnAll").addEventListener("click", () => {
-    const gruppeSelect = document.getElementById("gruppeSelect");
-    [...gruppeSelect.options].forEach(o => (o.selected = false));
+  // Reset je Filter
+  $id("resetJahr").addEventListener("click", resetJahrToDefault);
+  $id("resetGruppe1").addEventListener("click", resetGruppe1ToDefault);
+  $id("resetGruppe").addEventListener("click", () => {
+    clearKostenstellenSelection();
     rerender();
   });
 
-  // initial
-  rebuildGruppe1Options();
-  rebuildGruppeOptions();
   rerender();
 }
 
