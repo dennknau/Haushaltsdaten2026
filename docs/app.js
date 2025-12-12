@@ -39,13 +39,12 @@ function setStatus(text) {
 }
 
 // ==============================
-// Neue Logik: Erträge über Sachkonto-Prefix
-// Ertrag, wenn Sachkonto mit "5" oder "91" beginnt.
+// Ertragslogik über Sachkonto-Prefix
+// Ertrag, wenn Sachkonto-Nummer mit "5" oder "91" beginnt
 // ==============================
 function extractSachkontoNumber(sachkonto) {
-  // erwartet z.B. "6900100 - Beiträge ..." oder "9100000 - ..."
   const s = String(sachkonto ?? "");
-  const m = s.match(/^\s*(\d+)/); // führende Ziffern
+  const m = s.match(/^\s*(\d+)/);
   return m ? m[1] : "";
 }
 
@@ -69,17 +68,23 @@ function filterRows(rows, gruppen) {
 }
 
 // ==============================
-// Aggregation pro Kontogruppe
-// - aufwendungen: Summe der Aufwands-Sachkonten (positiv dargestellt)
-// - ertraege:     Summe der Ertrags-Sachkonten (positiv dargestellt)
-// - saldo:        aufwendungen - ertraege
+// Aggregation pro Kontogruppe (KORRIGIERT)
+// - Erträge und Aufwendungen werden über Sachkonto klassifiziert
+// - Summierung wirkt mit Vorzeichen:
+//   Ertrag:      ertraege += -betrag
+//   Aufwand:     aufwendungen += betrag
+// - Saldo: aufwendungen - ertraege
+//
+// Beispiel (Ertragskonto):
+//   betrag = -200  => ertraege += 200 (richtig)
+//   betrag = +200  => ertraege += -200 (reduziert Ertrag, zeigt Fehlerwirkung)
 // ==============================
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
   for (const r of rows) {
     const kg = String(r.kontogruppe ?? "(ohne kontogruppe)");
-    const betrag = Number(r.betrag ?? 0); // bereits geparst
+    const betrag = Number(r.betrag ?? 0);
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
     if (!map.has(kg)) {
@@ -87,24 +92,26 @@ function aggregateByKontogruppe(rows) {
     }
     const obj = map.get(kg);
 
-    // Wir summieren als positive "Volumina", unabhängig vom Vorzeichen:
-    const absVal = Math.abs(betrag);
-
-    if (istErtrag) obj.ertraege += absVal;
-    else obj.aufwendungen += absVal;
+    if (istErtrag) {
+      obj.ertraege += -betrag;      // ✅ Vorzeichen wirkt
+    } else {
+      obj.aufwendungen += betrag;   // ✅ Vorzeichen wirkt
+    }
 
     obj.saldo = obj.aufwendungen - obj.ertraege;
   }
 
   const out = [...map.values()];
 
+  // Sortierung nach führender Nummer der Kontogruppe (1..9,10..)
   out.sort((a, b) => {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
 
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
+    if (!isNaN(na) && isNaN(nb)) return -1;
+    if (isNaN(na) && !isNaN(nb)) return 1;
+
     return a.kontogruppe.localeCompare(b.kontogruppe, "de");
   });
 
@@ -118,9 +125,11 @@ function renderTable(data) {
   const kgSorter = (a, b) => {
     const na = kontogruppeNum(a);
     const nb = kontogruppeNum(b);
+
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
+    if (!isNaN(na) && isNaN(nb)) return -1;
+    if (isNaN(na) && !isNaN(nb)) return 1;
+
     return String(a).localeCompare(String(b), "de");
   };
 
@@ -130,13 +139,34 @@ function renderTable(data) {
       layout: "fitColumns",
       height: "520px",
       columns: [
-        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
-        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()) },
-        { title: "Saldo", field: "saldo", sorter: "number", hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()) },
+        {
+          title: "Kontogruppe",
+          field: "kontogruppe",
+          sorter: kgSorter,
+          headerFilter: "input",
+          widthGrow: 3,
+        },
+        {
+          title: "Aufwendungen",
+          field: "aufwendungen",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+        {
+          title: "Erträge",
+          field: "ertraege",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+        {
+          title: "Saldo",
+          field: "saldo",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
       ],
     });
 
@@ -148,8 +178,9 @@ function renderTable(data) {
 }
 
 // ==============================
-// Diagramm (Erträge grün, Aufwendungen rot)
-// Jetzt sind beide Serien positiv; wir zeigen sie als gruppierte Balken.
+// Diagramm (UNVERÄNDERT – nebeneinander, beide positiv)
+// Hinweis: Wenn "ertraege" durch falsches Vorzeichen negativ wird,
+// kann das Diagramm Werte < 0 zeigen. Das ist ok, weil es den Fehler widerspiegelt.
 // ==============================
 function renderChart(data) {
   const y = data.map(d => d.kontogruppe);
@@ -176,7 +207,7 @@ function renderChart(data) {
     "chart",
     [traceErtraege, traceAufwendungen],
     {
-      barmode: "group", // beide positiv -> nebeneinander
+      barmode: "group",
       margin: { l: 280, r: 20, t: 10, b: 40 },
       xaxis: { title: "EUR", zeroline: true },
       yaxis: {
@@ -214,13 +245,13 @@ async function main() {
   raw = await res.json();
   if (!Array.isArray(raw)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
 
-  // Beträge normalisieren
+  // Beträge normalisieren (String -> Zahl)
   raw = raw.map(r => ({
     ...r,
     betrag: parseGermanNumber(r.betrag),
   }));
 
-  // Filter-Liste befüllen
+  // Filterliste befüllen
   const sel = document.getElementById("gruppeSelect");
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
     const opt = document.createElement("option");
