@@ -21,7 +21,9 @@ function kontogruppeNum(kg) {
 }
 
 function uniqueSorted(arr) {
-  return [...new Set(arr)].filter(Boolean).map(String)
+  return [...new Set(arr)]
+    .filter(Boolean)
+    .map(String)
     .sort((a, b) => a.localeCompare(b, "de"));
 }
 
@@ -51,7 +53,7 @@ function filterRows(rows, gruppen) {
   return rows.filter(r => set.has(String(r.gruppe)));
 }
 
-/* ---------- Aggregation (Kontogruppe) ---------- */
+/* ---------- Aggregation nach Kontogruppe ---------- */
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
@@ -60,13 +62,19 @@ function aggregateByKontogruppe(rows) {
     const betrag = r.betrag;
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
-    if (!map.has(kg)) map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0, saldo: 0 });
+    if (!map.has(kg)) {
+      map.set(kg, {
+        kontogruppe: kg,
+        aufwendungen: 0,
+        ertraege: 0,
+      });
+    }
+
     const o = map.get(kg);
 
+    // Vorzeichenlogik
     if (istErtrag) o.ertraege += -betrag;
     else o.aufwendungen += betrag;
-
-    o.saldo = o.aufwendungen - o.ertraege;
   }
 
   return [...map.values()].sort((a, b) => {
@@ -79,11 +87,7 @@ function aggregateByKontogruppe(rows) {
   });
 }
 
-/* ---------- Overview ---------- */
-/* Hinweis: Berechnung bleibt wie bisher:
-   - Erträge gesamt: Erträge ohne 91
-   - Aufwendungen gesamt: Aufwendungen ohne 92
-   Wenn du wirklich ALLE willst, sag kurz Bescheid, dann entferne ich die Filter. */
+/* ---------- Gesamtübersicht ---------- */
 function computeOverviewTotals(rows) {
   let ertraege = 0;
   let aufwendungen = 0;
@@ -92,8 +96,13 @@ function computeOverviewTotals(rows) {
     const betrag = r.betrag;
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
-    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) ertraege += -betrag;
-    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) aufwendungen += betrag;
+    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) {
+      ertraege += -betrag;
+    }
+
+    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) {
+      aufwendungen += betrag;
+    }
   }
 
   return {
@@ -114,6 +123,7 @@ function renderOverview(o) {
   document.getElementById("sumAufwand").textContent = fmtEUR(o.aufwendungen);
 
   const ergebnisEl = document.getElementById("sumErgebnis");
+
   let label = "Ausgeglichen";
   let displayValue = 0;
 
@@ -127,13 +137,19 @@ function renderOverview(o) {
 
   ergebnisEl.innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
 
-  const maxAbs = Math.max(Math.abs(o.ertraege), Math.abs(o.aufwendungen), Math.abs(o.ergebnis), 1);
+  const maxAbs = Math.max(
+    Math.abs(o.ertraege),
+    Math.abs(o.aufwendungen),
+    Math.abs(o.ergebnis),
+    1
+  );
+
   setBarWidth(document.getElementById("barErtrag"), o.ertraege, maxAbs);
   setBarWidth(document.getElementById("barAufwand"), o.aufwendungen, maxAbs);
   setBarWidth(document.getElementById("barErgebnis"), o.ergebnis, maxAbs);
 }
 
-/* ---------- Tabelle ---------- */
+/* ---------- Tabelle: Ergebnisübersicht (OHNE Saldo) ---------- */
 function renderTable(data) {
   const kgSorter = (a, b) => {
     const na = kontogruppeNum(a);
@@ -148,8 +164,7 @@ function renderTable(data) {
     table = new Tabulator("#table", {
       data,
       layout: "fitColumns",
-      // ✅ passt sich automatisch an die Tabellenhöhe an
-      height: false,
+      height: false, // passt sich automatisch an
       columns: [
         {
           title: "Kontogruppe",
@@ -158,12 +173,21 @@ function renderTable(data) {
           headerFilter: "input",
           widthGrow: 3,
         },
-        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Saldo", field: "saldo", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        {
+          title: "Aufwendungen",
+          field: "aufwendungen",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+        {
+          title: "Erträge",
+          field: "ertraege",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
       ],
-      // optional: damit die Tabelle nicht ewig hoch wird, wenn sehr viele Zeilen:
-      // maxHeight: "70vh",
     });
 
     table.setSort([{ column: "kontogruppe", dir: "asc" }]);
@@ -176,15 +200,21 @@ function renderTable(data) {
 /* ---------- Render ---------- */
 function rerender() {
   const filtered = filterRows(raw, getSelectedGruppen());
+
   renderOverview(computeOverviewTotals(filtered));
   renderTable(aggregateByKontogruppe(filtered));
-  document.getElementById("status").textContent = `Zeilen: ${filtered.length}`;
+
+  document.getElementById("status").textContent =
+    `Zeilen: ${filtered.length}`;
 }
 
 /* ---------- Init ---------- */
 async function main() {
   const res = await fetch(DATA_URL);
-  raw = (await res.json()).map(r => ({ ...r, betrag: parseGermanNumber(r.betrag) }));
+  raw = (await res.json()).map(r => ({
+    ...r,
+    betrag: parseGermanNumber(r.betrag),
+  }));
 
   const sel = document.getElementById("gruppeSelect");
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
@@ -194,7 +224,7 @@ async function main() {
     sel.appendChild(o);
   });
 
-  // ✅ sofort beim Klick/Ändern aktualisieren
+  // sofort aktualisieren
   sel.addEventListener("change", rerender);
 
   document.getElementById("btnAll").onclick = () => {
