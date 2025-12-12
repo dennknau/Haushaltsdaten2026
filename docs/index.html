@@ -95,7 +95,7 @@
     .rowBar { width: 46%; }
     .rowNum { width: 20%; }
 
-    /* Pies */
+    /* Kreisdiagramme */
     .pieGrid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -105,6 +105,17 @@
       .pieGrid { grid-template-columns: 1fr; }
     }
     .pieBox { height: 420px; }
+
+    /* Detailbereich */
+    .detailHeader {
+      display:flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #eee;
+    }
   </style>
 </head>
 
@@ -156,12 +167,6 @@
   </div>
 
   <div class="card">
-    <h2>Ergebnisübersicht</h2>
-    <div id="table"></div>
-  </div>
-
-  <!-- ✅ NEU: 2 Kreisdiagramme -->
-  <div class="card">
     <h2>Kreisdiagramme nach Kontogruppe</h2>
     <div class="pieGrid">
       <div>
@@ -172,6 +177,24 @@
         <div class="hint" style="margin-bottom:8px;">Aufwendungen nach Kontogruppe</div>
         <div id="pieAufwendungen" class="pieBox"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Ergebnisübersicht</h2>
+    <div class="hint">Tipp: Klick auf eine Kontogruppe, um die zugehörigen Sachkonten zu sehen.</div>
+    <div id="table" style="margin-top:10px;"></div>
+
+    <!-- ✅ Drilldown Bereich -->
+    <div id="detailSection" style="display:none;">
+      <div class="detailHeader">
+        <div>
+          <div style="font-weight:600;">Sachkonten-Details</div>
+          <div class="hint" id="detailTitle"></div>
+        </div>
+        <div class="hint" id="detailCount"></div>
+      </div>
+      <div id="detailTable" style="margin-top:10px;"></div>
     </div>
   </div>
 
