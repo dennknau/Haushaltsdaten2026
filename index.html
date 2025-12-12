@@ -2,12 +2,12 @@
 async function loadData() {
     const response = await fetch('haushalt.json');
     const data = await response.json();
-    console.log("Erster Datensatz:", data[0]); // Debug-Ausgabe
+    console.log("Beispieldatensatz:", data[0]); // hilft beim Debuggen
     return data;
 }
 
 loadData().then(data => {
-    // Alle Gruppen aus der Spalte "gruppe" einsammeln
+    // 1. Alle Gruppen (Spalte "gruppe") einsammeln
     const gruppen = [...new Set(data.map(d => d.gruppe))];
 
     const select = document.getElementById('gruppenFilter');
@@ -18,22 +18,33 @@ loadData().then(data => {
         select.appendChild(opt);
     });
 
-    // Start: erste Gruppe anzeigen
+    // 2. Start: erste Gruppe anzeigen
     drawChartFor(gruppen[0], data);
 
-    // Beim Wechsel neu zeichnen
+    // 3. Bei Änderung neu zeichnen
     select.addEventListener('change', () => {
         drawChartFor(select.value, data);
     });
 });
 
-// Betrag (Spalte "betrag") in eine Zahl verwandeln
-function parseBetrag(raw) {
-    if (raw === null || raw === undefined) return 0;
+// Hilfsfunktion: Betrag aus Datensatz holen und in Zahl umwandeln
+function getAmount(d) {
+    // Versuche verschiedene mögliche Schlüsselnamen
+    let raw =
+        d.betrag ??
+        d['€ nach HH'] ??
+        d['Euro_nach_HH'] ??
+        d['Euro'] ??
+        null;
 
+    if (raw === null) return 0;
+
+    // In String verwandeln
     raw = String(raw).trim();
-    // Eurozeichen & Leerzeichen entfernen
+
+    // Euro-Zeichen und Leerzeichen entfernen
     raw = raw.replace('€', '').replace(/\s/g, '');
+
     // Tausenderpunkte entfernen, Komma in Punkt umwandeln
     raw = raw.replace(/\./g, '').replace(',', '.');
 
@@ -47,10 +58,10 @@ function drawChartFor(gruppe, data) {
     const filtered = data.filter(d => d.gruppe === gruppe);
 
     const labels = filtered.map(d => d.sachkonto || d['SK & Bezeichnung'] || 'ohne Bezeichnung');
-    const values = filtered.map(d => parseBetrag(d.betrag));
+    const values = filtered.map(d => getAmount(d));
 
-    console.log("Zeichne Gruppe:", gruppe, "Anzahl:", filtered.length);
-    console.log("Beispielwerte:", values.slice(0, 5));
+    console.log("Zeichne für Gruppe:", gruppe, "Anzahl Datensätze:", filtered.length);
+    console.log("Beispiele Werte:", values.slice(0, 5));
 
     if (window.myChart) {
         window.myChart.destroy();
