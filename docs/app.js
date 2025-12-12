@@ -10,17 +10,15 @@ let table;
 // Hilfsfunktionen
 // ==============================
 function fmtEUR(n) {
-  return new Intl.NumberFormat("de-DE", {
-    style: "currency",
-    currency: "EUR",
-  }).format(n);
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 }
 
 function parseGermanNumber(value) {
   if (value === null || value === undefined) return 0;
   const s = String(value).trim();
   if (s === "") return 0;
-  return Number(s.replace(/\./g, "").replace(",", ".")) || 0;
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function kontogruppeNum(kg) {
@@ -30,9 +28,30 @@ function kontogruppeNum(kg) {
 
 function uniqueSorted(arr) {
   return [...new Set(arr)]
-    .filter(Boolean)
+    .filter(v => v !== undefined && v !== null && String(v).trim() !== "")
     .map(String)
     .sort((a, b) => a.localeCompare(b, "de"));
+}
+
+function setStatus(text) {
+  const el = document.getElementById("status");
+  if (el) el.textContent = text ?? "";
+}
+
+// ==============================
+// Neue Logik: Erträge über Sachkonto-Prefix
+// Ertrag, wenn Sachkonto mit "5" oder "91" beginnt.
+// ==============================
+function extractSachkontoNumber(sachkonto) {
+  // erwartet z.B. "6900100 - Beiträge ..." oder "9100000 - ..."
+  const s = String(sachkonto ?? "");
+  const m = s.match(/^\s*(\d+)/); // führende Ziffern
+  return m ? m[1] : "";
+}
+
+function isErtragBySachkonto(sachkonto) {
+  const nr = extractSachkontoNumber(sachkonto);
+  return nr.startsWith("5") || nr.startsWith("91");
 }
 
 // ==============================
@@ -50,33 +69,36 @@ function filterRows(rows, gruppen) {
 }
 
 // ==============================
-// Aggregation
+// Aggregation pro Kontogruppe
+// - aufwendungen: Summe der Aufwands-Sachkonten (positiv dargestellt)
+// - ertraege:     Summe der Ertrags-Sachkonten (positiv dargestellt)
+// - saldo:        aufwendungen - ertraege
 // ==============================
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
   for (const r of rows) {
     const kg = String(r.kontogruppe ?? "(ohne kontogruppe)");
-    const betrag = r.betrag;
+    const betrag = Number(r.betrag ?? 0); // bereits geparst
+    const istErtrag = isErtragBySachkonto(r.sachkonto);
 
     if (!map.has(kg)) {
-      map.set(kg, {
-        kontogruppe: kg,
-        aufwendungen: 0,
-        ertraege: 0,
-        saldo: 0,
-      });
+      map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0, saldo: 0 });
     }
-
     const obj = map.get(kg);
 
-    if (betrag >= 0) obj.aufwendungen += betrag;
-    else obj.ertraege += betrag;
+    // Wir summieren als positive "Volumina", unabhängig vom Vorzeichen:
+    const absVal = Math.abs(betrag);
 
-    obj.saldo += betrag;
+    if (istErtrag) obj.ertraege += absVal;
+    else obj.aufwendungen += absVal;
+
+    obj.saldo = obj.aufwendungen - obj.ertraege;
   }
 
-  return [...map.values()].sort((a, b) => {
+  const out = [...map.values()];
+
+  out.sort((a, b) => {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
 
@@ -85,6 +107,8 @@ function aggregateByKontogruppe(rows) {
     if (!isNaN(nb)) return 1;
     return a.kontogruppe.localeCompare(b.kontogruppe, "de");
   });
+
+  return out;
 }
 
 // ==============================
@@ -106,34 +130,13 @@ function renderTable(data) {
       layout: "fitColumns",
       height: "520px",
       columns: [
-        {
-          title: "Kontogruppe",
-          field: "kontogruppe",
-          sorter: kgSorter,
-          headerFilter: "input",
-          widthGrow: 3,
-        },
-        {
-          title: "Aufwendungen",
-          field: "aufwendungen",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
-        {
-          title: "Erträge",
-          field: "ertraege",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
-        {
-          title: "Saldo",
-          field: "saldo",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
+        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
+        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()) },
+        { title: "Saldo", field: "saldo", sorter: "number", hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()) },
       ],
     });
 
@@ -145,7 +148,8 @@ function renderTable(data) {
 }
 
 // ==============================
-// Diagramm (FIX: explizite Reihenfolge)
+// Diagramm (Erträge grün, Aufwendungen rot)
+// Jetzt sind beide Serien positiv; wir zeigen sie als gruppierte Balken.
 // ==============================
 function renderChart(data) {
   const y = data.map(d => d.kontogruppe);
@@ -172,16 +176,13 @@ function renderChart(data) {
     "chart",
     [traceErtraege, traceAufwendungen],
     {
-      barmode: "relative",
+      barmode: "group", // beide positiv -> nebeneinander
       margin: { l: 280, r: 20, t: 10, b: 40 },
-      xaxis: {
-        title: "EUR (Erträge < 0 | Aufwendungen > 0)",
-        zeroline: true,
-      },
+      xaxis: { title: "EUR", zeroline: true },
       yaxis: {
         categoryorder: "array",
-        categoryarray: y,     // ✅ exakt unsere Reihenfolge
-        autorange: "reversed" // ✅ 1 oben, 13 unten
+        categoryarray: y,
+        autorange: "reversed",
       },
       legend: { orientation: "h" },
     },
@@ -193,8 +194,12 @@ function renderChart(data) {
 // Render-Pipeline
 // ==============================
 function rerender() {
-  const filtered = filterRows(raw, getSelectedGruppen());
+  const selected = getSelectedGruppen();
+  const filtered = filterRows(raw, selected);
   const agg = aggregateByKontogruppe(filtered);
+
+  setStatus(`Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`);
+
   renderTable(agg);
   renderChart(agg);
 }
@@ -204,23 +209,24 @@ function rerender() {
 // ==============================
 async function main() {
   const res = await fetch(DATA_URL);
-  if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden`);
+  if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${res.status})`);
 
   raw = await res.json();
-  if (!Array.isArray(raw)) throw new Error("JSON muss ein Array sein");
+  if (!Array.isArray(raw)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
 
+  // Beträge normalisieren
   raw = raw.map(r => ({
     ...r,
     betrag: parseGermanNumber(r.betrag),
   }));
 
-  // Kostenstellen-Filter
+  // Filter-Liste befüllen
   const sel = document.getElementById("gruppeSelect");
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
-    const o = document.createElement("option");
-    o.value = g;
-    o.textContent = g;
-    sel.appendChild(o);
+    const opt = document.createElement("option");
+    opt.value = g;
+    opt.textContent = g;
+    sel.appendChild(opt);
   });
 
   document.getElementById("btnAll").onclick = () => {
@@ -235,5 +241,5 @@ async function main() {
 
 main().catch(err => {
   console.error(err);
-  alert("Fehler: " + err.message);
+  alert("Fehler: " + (err?.message ?? err));
 });
