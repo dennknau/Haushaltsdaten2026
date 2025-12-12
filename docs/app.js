@@ -1,252 +1,124 @@
 const DATA_URL = "./haushalt.json";
 
 let raw = [];
-let tab = null; // ✅ Tabulator-Instanz (nicht "table")
+let tab = null;
 
 /* ---------- Helper ---------- */
-function fmtEUR(n) {
-  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
-}
+const fmtEUR = n =>
+  new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
 
-function parseGermanNumber(value) {
-  if (value === null || value === undefined) return 0;
-  const s = String(value).trim();
-  if (s === "") return 0;
-  const n = Number(s.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? n : 0;
-}
+const num = v => Number(String(v).replace(/\./g,"").replace(",", ".")) || 0;
 
-function kontogruppeNum(kg) {
-  const m = String(kg ?? "").match(/^\s*(\d+)/);
-  return m ? parseInt(m[1], 10) : NaN;
-}
+const uniq = arr => [...new Set(arr)].filter(Boolean).sort();
 
-function uniqueSorted(arr) {
-  return [...new Set(arr)]
-    .filter(Boolean)
-    .map(String)
-    .sort((a, b) => a.localeCompare(b, "de"));
-}
+/* ---------- Filter Getter ---------- */
+const val = id => document.getElementById(id).value;
+const multi = id => [...document.getElementById(id).selectedOptions].map(o=>o.value);
 
-function extractSachkontoNumber(sachkonto) {
-  const m = String(sachkonto ?? "").match(/^\s*(\d+)/);
-  return m ? m[1] : "";
-}
+/* ---------- Klassifizierung ---------- */
+const isErtrag = s => /^5|^91/.test(s?.match(/^\d+/)?.[0]||"");
 
-function isErtragBySachkonto(sachkonto) {
-  const nr = extractSachkontoNumber(sachkonto);
-  return nr.startsWith("5") || nr.startsWith("91");
-}
-
-function startsWithPrefix(sachkonto, prefix) {
-  return extractSachkontoNumber(sachkonto).startsWith(prefix);
-}
-
-/* ---------- Filter ---------- */
-function getSelectedGruppen() {
-  const sel = document.getElementById("gruppeSelect");
-  return sel ? [...sel.selectedOptions].map(o => o.value) : [];
-}
-
-function filterRows(rows, gruppen) {
-  if (!gruppen.length) return rows;
-  const set = new Set(gruppen);
-  return rows.filter(r => set.has(String(r.gruppe)));
-}
-
-/* ---------- Aggregation nach Kontogruppe ---------- */
-function aggregateByKontogruppe(rows) {
-  const map = new Map();
-
-  for (const r of rows) {
-    const kg = String(r.kontogruppe ?? "(ohne kontogruppe)");
-    const betrag = r.betrag;
-    const istErtrag = isErtragBySachkonto(r.sachkonto);
-
-    if (!map.has(kg)) map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0 });
-    const o = map.get(kg);
-
-    // Vorzeichenlogik
-    if (istErtrag) o.ertraege += -betrag;
-    else o.aufwendungen += betrag;
+/* ---------- Aggregation ---------- */
+function aggregate(rows){
+  const m = new Map();
+  for(const r of rows){
+    const k = r.kontogruppe;
+    if(!m.has(k)) m.set(k,{kontogruppe:k,ertraege:0,aufwendungen:0});
+    const o = m.get(k);
+    if(isErtrag(r.sachkonto)) o.ertraege += -r.betrag;
+    else o.aufwendungen += r.betrag;
   }
+  return [...m.values()];
+}
 
-  return [...map.values()].sort((a, b) => {
-    const na = kontogruppeNum(a.kontogruppe);
-    const nb = kontogruppeNum(b.kontogruppe);
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
-    return a.kontogruppe.localeCompare(b.kontogruppe, "de");
+/* ---------- Rendering ---------- */
+function renderAll(){
+  const jahr = val("jahrSelect");
+  const g1 = val("gruppe1Select");
+  const gruppen = multi("gruppeSelect");
+
+  let f = raw.filter(r =>
+    r.jahr===jahr &&
+    r.gruppe1===g1 &&
+    (!gruppen.length || gruppen.includes(r.gruppe))
+  );
+
+  // Übersicht
+  let er=0, aw=0;
+  f.forEach(r=>{
+    if(isErtrag(r.sachkonto)) er+=-r.betrag;
+    else aw+=r.betrag;
   });
-}
+  const erg = aw-er;
+  document.getElementById("sumErtrag").textContent = fmtEUR(er);
+  document.getElementById("sumAufwand").textContent = fmtEUR(aw);
+  document.getElementById("sumErgebnis").textContent =
+    fmtEUR(Math.abs(erg)) + (erg<0?" (Überschuss)":erg>0?" (Defizit)":" (Ausgeglichen)");
 
-/* ---------- Gesamtübersicht ---------- */
-function computeOverviewTotals(rows) {
-  let ertraege = 0;
-  let aufwendungen = 0;
+  const agg = aggregate(f);
 
-  for (const r of rows) {
-    const betrag = r.betrag;
-    const istErtrag = isErtragBySachkonto(r.sachkonto);
-
-    if (istErtrag && !startsWithPrefix(r.sachkonto, "91")) ertraege += -betrag;
-    if (!istErtrag && !startsWithPrefix(r.sachkonto, "92")) aufwendungen += betrag;
-  }
-
-  return { ertraege, aufwendungen, ergebnis: aufwendungen - ertraege };
-}
-
-function setBarWidth(barEl, value, maxValue) {
-  if (!barEl) return;
-  const w = Math.min(100, (Math.abs(value) / Math.max(maxValue, 1)) * 100);
-  barEl.style.width = `${w}%`;
-}
-
-function renderOverview(o) {
-  document.getElementById("sumErtrag").textContent = fmtEUR(o.ertraege);
-  document.getElementById("sumAufwand").textContent = fmtEUR(o.aufwendungen);
-
-  const ergebnisEl = document.getElementById("sumErgebnis");
-  let label = "Ausgeglichen";
-  let displayValue = 0;
-
-  if (o.ergebnis < 0) { label = "Überschuss"; displayValue = Math.abs(o.ergebnis); }
-  else if (o.ergebnis > 0) { label = "Defizit"; displayValue = o.ergebnis; }
-
-  ergebnisEl.innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
-
-  const maxAbs = Math.max(Math.abs(o.ertraege), Math.abs(o.aufwendungen), Math.abs(o.ergebnis), 1);
-  setBarWidth(document.getElementById("barErtrag"), o.ertraege, maxAbs);
-  setBarWidth(document.getElementById("barAufwand"), o.aufwendungen, maxAbs);
-  setBarWidth(document.getElementById("barErgebnis"), o.ergebnis, maxAbs);
-}
-
-/* ---------- Tabelle (ohne Saldo) ---------- */
-function renderTable(data) {
-  const kgSorter = (a, b) => {
-    const na = kontogruppeNum(a);
-    const nb = kontogruppeNum(b);
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
-    return String(a).localeCompare(String(b), "de");
-  };
-
-  if (!tab) {
-    tab = new Tabulator("#table", {
-      data,
-      layout: "fitColumns",
-      height: false,
-      columns: [
-        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
-        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()) },
-      ],
+  // Tabelle
+  if(!tab){
+    tab = new Tabulator("#table",{
+      data:agg,
+      layout:"fitColumns",
+      columns:[
+        {title:"Kontogruppe",field:"kontogruppe"},
+        {title:"Aufwendungen",field:"aufwendungen",formatter:c=>fmtEUR(c.getValue())},
+        {title:"Erträge",field:"ertraege",formatter:c=>fmtEUR(c.getValue())},
+      ]
     });
+  } else tab.replaceData(agg);
 
-    // optional: nur wenn vorhanden
-    tab.setSort?.([{ column: "kontogruppe", dir: "asc" }]);
-  } else {
-    tab.replaceData(data);
-    tab.setSort?.([{ column: "kontogruppe", dir: "asc" }]);
-  }
-}
+  // Pies
+  Plotly.react("pieErtraege",[{
+    type:"pie",
+    labels:agg.map(a=>a.kontogruppe),
+    values:agg.map(a=>Math.max(0,a.ertraege))
+  }]);
 
-/* ---------- Kreisdiagramme ---------- */
-function renderPies(agg) {
-  if (typeof Plotly === "undefined") return;
+  Plotly.react("pieAufwendungen",[{
+    type:"pie",
+    labels:agg.map(a=>a.kontogruppe),
+    values:agg.map(a=>Math.max(0,a.aufwendungen))
+  }]);
 
-  const elE = document.getElementById("pieErtraege");
-  const elA = document.getElementById("pieAufwendungen");
-  if (!elE || !elA) return;
-
-  const labels = agg.map(d => d.kontogruppe);
-
-  // Pie braucht >= 0
-  const valuesErtraege = agg.map(d => Math.max(0, d.ertraege));
-  const valuesAufwand = agg.map(d => Math.max(0, d.aufwendungen));
-
-  const ertragPairs = labels.map((l, i) => [l, valuesErtraege[i]]).filter(([, v]) => v > 0);
-  const aufwandPairs = labels.map((l, i) => [l, valuesAufwand[i]]).filter(([, v]) => v > 0);
-
-  const layout = { margin: { l: 10, r: 10, t: 10, b: 10 }, showlegend: true };
-
-  Plotly.react(
-    elE,
-    [{
-      type: "pie",
-      labels: ertragPairs.map(p => p[0]),
-      values: ertragPairs.map(p => p[1]),
-      textinfo: "percent",
-      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-    }],
-    layout,
-    { responsive: true }
-  );
-
-  Plotly.react(
-    elA,
-    [{
-      type: "pie",
-      labels: aufwandPairs.map(p => p[0]),
-      values: aufwandPairs.map(p => p[1]),
-      textinfo: "percent",
-      hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-    }],
-    layout,
-    { responsive: true }
-  );
-}
-
-/* ---------- Render ---------- */
-function rerender() {
-  const filtered = filterRows(raw, getSelectedGruppen());
-
-  renderOverview(computeOverviewTotals(filtered));
-
-  const agg = aggregateByKontogruppe(filtered);
-  renderTable(agg);
-
-  // Pies zuverlässig nach Layout rendern
-  requestAnimationFrame(() => renderPies(agg));
-  setTimeout(() => renderPies(agg), 0);
-
-  const status = document.getElementById("status");
-  if (status) status.textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
+  document.getElementById("status").textContent =
+    `Zeilen: ${f.length} | Kontogruppen: ${agg.length}`;
 }
 
 /* ---------- Init ---------- */
-async function main() {
-  const res = await fetch(DATA_URL);
-  raw = (await res.json()).map(r => ({ ...r, betrag: parseGermanNumber(r.betrag) }));
+fetch(DATA_URL).then(r=>r.json()).then(j=>{
+  raw = j.map(r=>({...r,betrag:num(r.betrag)}));
 
-  const sel = document.getElementById("gruppeSelect");
-  uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
-    const o = document.createElement("option");
-    o.value = g;
-    o.textContent = g;
-    sel.appendChild(o);
-  });
+  const jahre = uniq(raw.map(r=>r.jahr));
+  const jahrSel = document.getElementById("jahrSelect");
+  jahre.forEach(v=>jahrSel.add(new Option(v,v)));
 
-  sel.addEventListener("change", rerender);
-
-  document.getElementById("btnAll").onclick = () => {
-    [...sel.options].forEach(o => (o.selected = false));
-    rerender();
+  jahrSel.onchange = () => {
+    const g1Sel = document.getElementById("gruppe1Select");
+    g1Sel.innerHTML="";
+    uniq(raw.filter(r=>r.jahr===jahrSel.value).map(r=>r.gruppe1))
+      .forEach(v=>g1Sel.add(new Option(v,v)));
+    g1Sel.onchange();
   };
 
-  rerender();
+  document.getElementById("gruppe1Select").onchange = () => {
+    const gs = document.getElementById("gruppeSelect");
+    gs.innerHTML="";
+    uniq(raw.filter(r=>
+      r.jahr===jahrSel.value &&
+      r.gruppe1===val("gruppe1Select")
+    ).map(r=>r.gruppe)).forEach(v=>gs.add(new Option(v,v)));
+    renderAll();
+  };
 
-  window.addEventListener("resize", () => {
-    const agg = aggregateByKontogruppe(filterRows(raw, getSelectedGruppen()));
-    renderPies(agg);
-  });
-}
+  document.getElementById("gruppeSelect").onchange = renderAll;
+  document.getElementById("btnAll").onclick = () => {
+    [...document.getElementById("gruppeSelect").options].forEach(o=>o.selected=false);
+    renderAll();
+  };
 
-main().catch(err => {
-  console.error(err);
-  alert("Fehler: " + (err?.message ?? err));
+  jahrSel.selectedIndex=0;
+  jahrSel.onchange();
 });
