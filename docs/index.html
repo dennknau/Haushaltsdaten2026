@@ -7,10 +7,10 @@
 
   <!-- Tabulator (Tabelle) -->
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-
-  <!-- Plotly (Diagramm) -->
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+
+  <!-- Plotly (Diagramm unten, bleibt wie gehabt) -->
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
@@ -21,8 +21,24 @@
     .hint { color:#666; font-size: 0.95rem; }
     button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; }
     button:hover { background: #f6f6f6; }
+
+    /* Summary Table + Mini Chart */
+    table.summary { width: 100%; border-collapse: collapse; }
+    table.summary th, table.summary td { padding: 10px 12px; border-top: 1px solid #eee; vertical-align: middle; }
+    table.summary th { text-align: left; font-weight: 700; }
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .barWrap { width: 100%; height: 14px; background: #f2f2f2; border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; width: 0%; border-radius: 999px; }
+    .bar.red { background: red; }
+    .bar.green { background: green; }
+    .bar.gray { background: #666; }
+
+    .rowTitle { width: 34%; }
+    .rowBar { width: 46%; }
+    .rowNum { width: 20%; }
   </style>
 </head>
+
 <body>
   <h1>Haushaltsplan</h1>
 
@@ -41,13 +57,54 @@
     <div class="hint" id="status"></div>
   </header>
 
-  <!-- ✅ Tabelle oben -->
+  <!-- ✅ NEU: Summary oberhalb der Detail-Tabelle -->
+  <div class="card">
+    <h2>Gesamtübersicht</h2>
+    <table class="summary" id="summaryTable">
+      <thead>
+        <tr>
+          <th class="rowTitle">Kennzahl</th>
+          <th class="rowBar">Grafik</th>
+          <th class="rowNum num">Summe</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Erträge gesamt (ohne 91)</td>
+          <td>
+            <div class="barWrap"><div id="barErtrag" class="bar green"></div></div>
+          </td>
+          <td id="sumErtrag" class="num">–</td>
+        </tr>
+        <tr>
+          <td>Aufwendungen gesamt (ohne 92)</td>
+          <td>
+            <div class="barWrap"><div id="barAufwand" class="bar red"></div></div>
+          </td>
+          <td id="sumAufwand" class="num">–</td>
+        </tr>
+        <tr>
+          <td><b>Ergebnis (Aufwand − Ertrag)</b></td>
+          <td>
+            <div class="barWrap"><div id="barErgebnis" class="bar gray"></div></div>
+          </td>
+          <td id="sumErgebnis" class="num"><b>–</b></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="hint" id="summaryHint" style="margin-top:10px;">
+      Hinweis: Erträge werden über Sachkonto (Prefix 5/91) klassifiziert; in der Übersicht werden 91er-Erträge ausgeschlossen. Aufwendungen schließen 92er-Sachkonten aus.
+    </div>
+  </div>
+
+  <!-- ✅ Detail-Tabelle -->
   <div class="card">
     <h2>Tabelle (nach kontogruppe)</h2>
     <div id="table"></div>
   </div>
 
-  <!-- ✅ Diagramm darunter -->
+  <!-- Diagramm (wie bisher) -->
   <div class="card">
     <h2>Diagramm (nach kontogruppe)</h2>
     <div id="chart" style="height:520px;"></div>

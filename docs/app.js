@@ -7,7 +7,7 @@ let raw = [];
 let table;
 
 // ==============================
-// Hilfsfunktionen
+// Helpers
 // ==============================
 function fmtEUR(n) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
@@ -38,10 +38,6 @@ function setStatus(text) {
   if (el) el.textContent = text ?? "";
 }
 
-// ==============================
-// Ertragslogik über Sachkonto-Prefix
-// Ertrag, wenn Sachkonto-Nummer mit "5" oder "91" beginnt
-// ==============================
 function extractSachkontoNumber(sachkonto) {
   const s = String(sachkonto ?? "");
   const m = s.match(/^\s*(\d+)/);
@@ -49,8 +45,14 @@ function extractSachkontoNumber(sachkonto) {
 }
 
 function isErtragBySachkonto(sachkonto) {
+  // Ertrag, wenn Sachkonto-Nummer mit "5" oder "91" beginnt
   const nr = extractSachkontoNumber(sachkonto);
   return nr.startsWith("5") || nr.startsWith("91");
+}
+
+function startsWithPrefix(sachkonto, prefix) {
+  const nr = extractSachkontoNumber(sachkonto);
+  return nr.startsWith(prefix);
 }
 
 // ==============================
@@ -68,16 +70,10 @@ function filterRows(rows, gruppen) {
 }
 
 // ==============================
-// Aggregation pro Kontogruppe (KORRIGIERT)
-// - Erträge und Aufwendungen werden über Sachkonto klassifiziert
-// - Summierung wirkt mit Vorzeichen:
-//   Ertrag:      ertraege += -betrag
-//   Aufwand:     aufwendungen += betrag
+// Aggregation pro Kontogruppe (mit Vorzeichenwirkung)
+// - Erträge:      ertraege += -betrag
+// - Aufwendungen: aufwendungen += betrag
 // - Saldo: aufwendungen - ertraege
-//
-// Beispiel (Ertragskonto):
-//   betrag = -200  => ertraege += 200 (richtig)
-//   betrag = +200  => ertraege += -200 (reduziert Ertrag, zeigt Fehlerwirkung)
 // ==============================
 function aggregateByKontogruppe(rows) {
   const map = new Map();
@@ -92,18 +88,14 @@ function aggregateByKontogruppe(rows) {
     }
     const obj = map.get(kg);
 
-    if (istErtrag) {
-      obj.ertraege += -betrag;      // ✅ Vorzeichen wirkt
-    } else {
-      obj.aufwendungen += betrag;   // ✅ Vorzeichen wirkt
-    }
+    if (istErtrag) obj.ertraege += -betrag;      // ✅ Vorzeichen wirkt
+    else obj.aufwendungen += betrag;             // ✅ Vorzeichen wirkt
 
     obj.saldo = obj.aufwendungen - obj.ertraege;
   }
 
   const out = [...map.values()];
 
-  // Sortierung nach führender Nummer der Kontogruppe (1..9,10..)
   out.sort((a, b) => {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
@@ -119,7 +111,78 @@ function aggregateByKontogruppe(rows) {
 }
 
 // ==============================
-// Tabelle
+// NEU: Gesamtübersicht berechnen
+// - Erträge gesamt (ohne 91): nur Erträge, deren Sachkonto NICHT mit 91 beginnt
+// - Aufwendungen gesamt (ohne 92): nur Aufwendungen, deren Sachkonto NICHT mit 92 beginnt
+// - Ergebnis = Aufwand - Ertrag
+//
+// Erträge/Aufwand werden dabei mit Vorzeichenwirkung summiert:
+//   Ertrag:      sum += -betrag
+//   Aufwand:     sum += betrag
+// ==============================
+function computeOverviewTotals(rows) {
+  let ertraegeOhne91 = 0;
+  let aufwendungenOhne92 = 0;
+
+  for (const r of rows) {
+    const betrag = Number(r.betrag ?? 0);
+    const istErtrag = isErtragBySachkonto(r.sachkonto);
+
+    if (istErtrag) {
+      // nur wenn NICHT 91...
+      if (!startsWithPrefix(r.sachkonto, "91")) {
+        ertraegeOhne91 += -betrag;
+      }
+    } else {
+      // Aufwand, aber ohne 92...
+      if (!startsWithPrefix(r.sachkonto, "92")) {
+        aufwendungenOhne92 += betrag;
+      }
+    }
+  }
+
+  const ergebnis = aufwendungenOhne92 - ertraegeOhne91;
+  return { ertraegeOhne91, aufwendungenOhne92, ergebnis };
+}
+
+function setBarWidth(barEl, value, maxValue) {
+  if (!barEl) return;
+  const denom = maxValue <= 0 ? 1 : maxValue;
+  const w = Math.max(0, Math.min(100, (Math.abs(value) / denom) * 100));
+  barEl.style.width = `${w}%`;
+}
+
+// ==============================
+// Rendering: Summary
+// ==============================
+function renderOverview(overview) {
+  const elErtrag = document.getElementById("sumErtrag");
+  const elAufwand = document.getElementById("sumAufwand");
+  const elErgebnis = document.getElementById("sumErgebnis");
+
+  if (elErtrag) elErtrag.textContent = fmtEUR(overview.ertraegeOhne91);
+  if (elAufwand) elAufwand.textContent = fmtEUR(overview.aufwendungenOhne92);
+  if (elErgebnis) elErgebnis.innerHTML = `<b>${fmtEUR(overview.ergebnis)}</b>`;
+
+  const barErtrag = document.getElementById("barErtrag");
+  const barAufwand = document.getElementById("barAufwand");
+  const barErgebnis = document.getElementById("barErgebnis");
+
+  // Skalierung: größte absolute Zahl von Ertrag/Aufwand/Ergebnis
+  const maxAbs = Math.max(
+    Math.abs(overview.ertraegeOhne91),
+    Math.abs(overview.aufwendungenOhne92),
+    Math.abs(overview.ergebnis),
+    1
+  );
+
+  setBarWidth(barErtrag, overview.ertraegeOhne91, maxAbs);
+  setBarWidth(barAufwand, overview.aufwendungenOhne92, maxAbs);
+  setBarWidth(barErgebnis, overview.ergebnis, maxAbs);
+}
+
+// ==============================
+// Rendering: Detail-Tabelle
 // ==============================
 function renderTable(data) {
   const kgSorter = (a, b) => {
@@ -178,9 +241,7 @@ function renderTable(data) {
 }
 
 // ==============================
-// Diagramm (UNVERÄNDERT – nebeneinander, beide positiv)
-// Hinweis: Wenn "ertraege" durch falsches Vorzeichen negativ wird,
-// kann das Diagramm Werte < 0 zeigen. Das ist ok, weil es den Fehler widerspiegelt.
+// Diagramm (wie bisher – unverändert)
 // ==============================
 function renderChart(data) {
   const y = data.map(d => d.kontogruppe);
@@ -227,8 +288,11 @@ function renderChart(data) {
 function rerender() {
   const selected = getSelectedGruppen();
   const filtered = filterRows(raw, selected);
-  const agg = aggregateByKontogruppe(filtered);
 
+  const overview = computeOverviewTotals(filtered);
+  renderOverview(overview);
+
+  const agg = aggregateByKontogruppe(filtered);
   setStatus(`Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`);
 
   renderTable(agg);
@@ -245,13 +309,12 @@ async function main() {
   raw = await res.json();
   if (!Array.isArray(raw)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
 
-  // Beträge normalisieren (String -> Zahl)
   raw = raw.map(r => ({
     ...r,
     betrag: parseGermanNumber(r.betrag),
   }));
 
-  // Filterliste befüllen
+  // Filterliste
   const sel = document.getElementById("gruppeSelect");
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
     const opt = document.createElement("option");
