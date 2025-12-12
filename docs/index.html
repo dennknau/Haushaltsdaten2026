@@ -1,115 +1,339 @@
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Haushaltsplan – Interaktiv</title>
+// ==============================
+// Konfiguration
+// ==============================
+const DATA_URL = "./haushalt.json";
 
-  <!-- Tabulator (Tabelle) -->
-  <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
-  <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+let raw = [];
+let table;
 
-  <!-- Plotly (Diagramm unten, bleibt wie gehabt) -->
-  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+// ==============================
+// Helpers
+// ==============================
+function fmtEUR(n) {
+  return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
+}
 
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
-    header { display:flex; gap:16px; align-items:end; flex-wrap:wrap; }
-    .card { border:1px solid #e5e5e5; border-radius:12px; padding:16px; margin-top:16px; }
-    label { font-weight:600; display:block; margin-bottom:6px; }
-    select { min-width: 340px; min-height: 140px; }
-    .hint { color:#666; font-size: 0.95rem; }
-    button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; }
-    button:hover { background: #f6f6f6; }
+function parseGermanNumber(value) {
+  if (value === null || value === undefined) return 0;
+  const s = String(value).trim();
+  if (s === "") return 0;
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
 
-    /* Summary Table + Mini Chart */
-    table.summary { width: 100%; border-collapse: collapse; }
-    table.summary th, table.summary td { padding: 10px 12px; border-top: 1px solid #eee; vertical-align: middle; }
-    table.summary th { text-align: left; font-weight: 700; }
-    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .barWrap { width: 100%; height: 14px; background: #f2f2f2; border-radius: 999px; overflow: hidden; }
-    .bar { height: 100%; width: 0%; border-radius: 999px; }
-    .bar.red { background: red; }
-    .bar.green { background: green; }
-    .bar.gray { background: #666; }
+function kontogruppeNum(kg) {
+  const m = String(kg ?? "").match(/^\s*(\d+)/);
+  return m ? parseInt(m[1], 10) : NaN;
+}
 
-    .rowTitle { width: 34%; }
-    .rowBar { width: 46%; }
-    .rowNum { width: 20%; }
-  </style>
-</head>
+function uniqueSorted(arr) {
+  return [...new Set(arr)]
+    .filter(v => v !== undefined && v !== null && String(v).trim() !== "")
+    .map(String)
+    .sort((a, b) => a.localeCompare(b, "de"));
+}
 
-<body>
-  <h1>Haushaltsplan</h1>
+function setStatus(text) {
+  const el = document.getElementById("status");
+  if (el) el.textContent = text ?? "";
+}
 
-  <header class="card">
-    <div>
-      <label for="gruppeSelect">Kostenstellen (gruppe) filtern</label>
-      <select id="gruppeSelect" multiple></select>
-      <div class="hint">Mehrfachauswahl: Strg/Cmd halten. Keine Auswahl = alle.</div>
-    </div>
+function extractSachkontoNumber(sachkonto) {
+  const s = String(sachkonto ?? "");
+  const m = s.match(/^\s*(\d+)/);
+  return m ? m[1] : "";
+}
 
-    <div>
-      <button id="btnAll" type="button">Alle anzeigen</button>
-      <button id="btnApply" type="button">Filter anwenden</button>
-    </div>
+function isErtragBySachkonto(sachkonto) {
+  // Ertrag, wenn Sachkonto-Nummer mit "5" oder "91" beginnt
+  const nr = extractSachkontoNumber(sachkonto);
+  return nr.startsWith("5") || nr.startsWith("91");
+}
 
-    <div class="hint" id="status"></div>
-  </header>
+function startsWithPrefix(sachkonto, prefix) {
+  const nr = extractSachkontoNumber(sachkonto);
+  return nr.startsWith(prefix);
+}
 
-  <!-- ✅ NEU: Summary oberhalb der Detail-Tabelle -->
-  <div class="card">
-    <h2>Gesamtübersicht</h2>
-    <table class="summary" id="summaryTable">
-      <thead>
-        <tr>
-          <th class="rowTitle">Kennzahl</th>
-          <th class="rowBar">Grafik</th>
-          <th class="rowNum num">Summe</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Erträge gesamt (ohne 91)</td>
-          <td>
-            <div class="barWrap"><div id="barErtrag" class="bar green"></div></div>
-          </td>
-          <td id="sumErtrag" class="num">–</td>
-        </tr>
-        <tr>
-          <td>Aufwendungen gesamt (ohne 92)</td>
-          <td>
-            <div class="barWrap"><div id="barAufwand" class="bar red"></div></div>
-          </td>
-          <td id="sumAufwand" class="num">–</td>
-        </tr>
-        <tr>
-          <td><b>Ergebnis (Aufwand − Ertrag)</b></td>
-          <td>
-            <div class="barWrap"><div id="barErgebnis" class="bar gray"></div></div>
-          </td>
-          <td id="sumErgebnis" class="num"><b>–</b></td>
-        </tr>
-      </tbody>
-    </table>
+// ==============================
+// Filter
+// ==============================
+function getSelectedGruppen() {
+  const sel = document.getElementById("gruppeSelect");
+  return sel ? [...sel.selectedOptions].map(o => o.value) : [];
+}
 
-    <div class="hint" id="summaryHint" style="margin-top:10px;">
-      Hinweis: Erträge werden über Sachkonto (Prefix 5/91) klassifiziert; in der Übersicht werden 91er-Erträge ausgeschlossen. Aufwendungen schließen 92er-Sachkonten aus.
-    </div>
-  </div>
+function filterRows(rows, gruppen) {
+  if (!gruppen.length) return rows;
+  const set = new Set(gruppen);
+  return rows.filter(r => set.has(String(r.gruppe)));
+}
 
-  <!-- ✅ Detail-Tabelle -->
-  <div class="card">
-    <h2>Tabelle (nach kontogruppe)</h2>
-    <div id="table"></div>
-  </div>
+// ==============================
+// Aggregation pro Kontogruppe (mit Vorzeichenwirkung)
+// - Erträge:      ertraege += -betrag
+// - Aufwendungen: aufwendungen += betrag
+// - Saldo: aufwendungen - ertraege
+// ==============================
+function aggregateByKontogruppe(rows) {
+  const map = new Map();
 
-  <!-- Diagramm (wie bisher) -->
-  <div class="card">
-    <h2>Diagramm (nach kontogruppe)</h2>
-    <div id="chart" style="height:520px;"></div>
-  </div>
+  for (const r of rows) {
+    const kg = String(r.kontogruppe ?? "(ohne kontogruppe)");
+    const betrag = Number(r.betrag ?? 0);
+    const istErtrag = isErtragBySachkonto(r.sachkonto);
 
-  <script src="./app.js"></script>
-</body>
-</html>
+    if (!map.has(kg)) {
+      map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0, saldo: 0 });
+    }
+    const obj = map.get(kg);
+
+    if (istErtrag) obj.ertraege += -betrag;      // ✅ Vorzeichen wirkt
+    else obj.aufwendungen += betrag;             // ✅ Vorzeichen wirkt
+
+    obj.saldo = obj.aufwendungen - obj.ertraege;
+  }
+
+  const out = [...map.values()];
+
+  out.sort((a, b) => {
+    const na = kontogruppeNum(a.kontogruppe);
+    const nb = kontogruppeNum(b.kontogruppe);
+
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na) && isNaN(nb)) return -1;
+    if (isNaN(na) && !isNaN(nb)) return 1;
+
+    return a.kontogruppe.localeCompare(b.kontogruppe, "de");
+  });
+
+  return out;
+}
+
+// ==============================
+// NEU: Gesamtübersicht berechnen
+// - Erträge gesamt (ohne 91): nur Erträge, deren Sachkonto NICHT mit 91 beginnt
+// - Aufwendungen gesamt (ohne 92): nur Aufwendungen, deren Sachkonto NICHT mit 92 beginnt
+// - Ergebnis = Aufwand - Ertrag
+//
+// Erträge/Aufwand werden dabei mit Vorzeichenwirkung summiert:
+//   Ertrag:      sum += -betrag
+//   Aufwand:     sum += betrag
+// ==============================
+function computeOverviewTotals(rows) {
+  let ertraegeOhne91 = 0;
+  let aufwendungenOhne92 = 0;
+
+  for (const r of rows) {
+    const betrag = Number(r.betrag ?? 0);
+    const istErtrag = isErtragBySachkonto(r.sachkonto);
+
+    if (istErtrag) {
+      // nur wenn NICHT 91...
+      if (!startsWithPrefix(r.sachkonto, "91")) {
+        ertraegeOhne91 += -betrag;
+      }
+    } else {
+      // Aufwand, aber ohne 92...
+      if (!startsWithPrefix(r.sachkonto, "92")) {
+        aufwendungenOhne92 += betrag;
+      }
+    }
+  }
+
+  const ergebnis = aufwendungenOhne92 - ertraegeOhne91;
+  return { ertraegeOhne91, aufwendungenOhne92, ergebnis };
+}
+
+function setBarWidth(barEl, value, maxValue) {
+  if (!barEl) return;
+  const denom = maxValue <= 0 ? 1 : maxValue;
+  const w = Math.max(0, Math.min(100, (Math.abs(value) / denom) * 100));
+  barEl.style.width = `${w}%`;
+}
+
+// ==============================
+// Rendering: Summary
+// ==============================
+function renderOverview(overview) {
+  const elErtrag = document.getElementById("sumErtrag");
+  const elAufwand = document.getElementById("sumAufwand");
+  const elErgebnis = document.getElementById("sumErgebnis");
+
+  if (elErtrag) elErtrag.textContent = fmtEUR(overview.ertraegeOhne91);
+  if (elAufwand) elAufwand.textContent = fmtEUR(overview.aufwendungenOhne92);
+  if (elErgebnis) elErgebnis.innerHTML = `<b>${fmtEUR(overview.ergebnis)}</b>`;
+
+  const barErtrag = document.getElementById("barErtrag");
+  const barAufwand = document.getElementById("barAufwand");
+  const barErgebnis = document.getElementById("barErgebnis");
+
+  // Skalierung: größte absolute Zahl von Ertrag/Aufwand/Ergebnis
+  const maxAbs = Math.max(
+    Math.abs(overview.ertraegeOhne91),
+    Math.abs(overview.aufwendungenOhne92),
+    Math.abs(overview.ergebnis),
+    1
+  );
+
+  setBarWidth(barErtrag, overview.ertraegeOhne91, maxAbs);
+  setBarWidth(barAufwand, overview.aufwendungenOhne92, maxAbs);
+  setBarWidth(barErgebnis, overview.ergebnis, maxAbs);
+}
+
+// ==============================
+// Rendering: Detail-Tabelle
+// ==============================
+function renderTable(data) {
+  const kgSorter = (a, b) => {
+    const na = kontogruppeNum(a);
+    const nb = kontogruppeNum(b);
+
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    if (!isNaN(na) && isNaN(nb)) return -1;
+    if (isNaN(na) && !isNaN(nb)) return 1;
+
+    return String(a).localeCompare(String(b), "de");
+  };
+
+  if (!table) {
+    table = new Tabulator("#table", {
+      data,
+      layout: "fitColumns",
+      height: "520px",
+      columns: [
+        {
+          title: "Kontogruppe",
+          field: "kontogruppe",
+          sorter: kgSorter,
+          headerFilter: "input",
+          widthGrow: 3,
+        },
+        {
+          title: "Aufwendungen",
+          field: "aufwendungen",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+        {
+          title: "Erträge",
+          field: "ertraege",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+        {
+          title: "Saldo",
+          field: "saldo",
+          sorter: "number",
+          hozAlign: "right",
+          formatter: c => fmtEUR(c.getValue()),
+        },
+      ],
+    });
+
+    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
+  } else {
+    table.replaceData(data);
+    table.setSort([{ column: "kontogruppe", dir: "asc" }]);
+  }
+}
+
+// ==============================
+// Diagramm (wie bisher – unverändert)
+// ==============================
+function renderChart(data) {
+  const y = data.map(d => d.kontogruppe);
+
+  const traceErtraege = {
+    type: "bar",
+    orientation: "h",
+    name: "Erträge",
+    y,
+    x: data.map(d => d.ertraege),
+    marker: { color: "green" },
+  };
+
+  const traceAufwendungen = {
+    type: "bar",
+    orientation: "h",
+    name: "Aufwendungen",
+    y,
+    x: data.map(d => d.aufwendungen),
+    marker: { color: "red" },
+  };
+
+  Plotly.newPlot(
+    "chart",
+    [traceErtraege, traceAufwendungen],
+    {
+      barmode: "group",
+      margin: { l: 280, r: 20, t: 10, b: 40 },
+      xaxis: { title: "EUR", zeroline: true },
+      yaxis: {
+        categoryorder: "array",
+        categoryarray: y,
+        autorange: "reversed",
+      },
+      legend: { orientation: "h" },
+    },
+    { responsive: true }
+  );
+}
+
+// ==============================
+// Render-Pipeline
+// ==============================
+function rerender() {
+  const selected = getSelectedGruppen();
+  const filtered = filterRows(raw, selected);
+
+  const overview = computeOverviewTotals(filtered);
+  renderOverview(overview);
+
+  const agg = aggregateByKontogruppe(filtered);
+  setStatus(`Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`);
+
+  renderTable(agg);
+  renderChart(agg);
+}
+
+// ==============================
+// Init
+// ==============================
+async function main() {
+  const res = await fetch(DATA_URL);
+  if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${res.status})`);
+
+  raw = await res.json();
+  if (!Array.isArray(raw)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
+
+  raw = raw.map(r => ({
+    ...r,
+    betrag: parseGermanNumber(r.betrag),
+  }));
+
+  // Filterliste
+  const sel = document.getElementById("gruppeSelect");
+  uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
+    const opt = document.createElement("option");
+    opt.value = g;
+    opt.textContent = g;
+    sel.appendChild(opt);
+  });
+
+  document.getElementById("btnAll").onclick = () => {
+    [...sel.options].forEach(o => (o.selected = false));
+    rerender();
+  };
+
+  document.getElementById("btnApply").onclick = rerender;
+
+  rerender();
+}
+
+main().catch(err => {
+  console.error(err);
+  alert("Fehler: " + (err?.message ?? err));
+});

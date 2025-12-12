@@ -1,14 +1,9 @@
-// ==============================
-// Konfiguration
-// ==============================
 const DATA_URL = "./haushalt.json";
 
 let raw = [];
 let table;
 
-// ==============================
-// Helpers
-// ==============================
+// ------------------ Helpers ------------------
 function fmtEUR(n) {
   return new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n);
 }
@@ -45,7 +40,6 @@ function extractSachkontoNumber(sachkonto) {
 }
 
 function isErtragBySachkonto(sachkonto) {
-  // Ertrag, wenn Sachkonto-Nummer mit "5" oder "91" beginnt
   const nr = extractSachkontoNumber(sachkonto);
   return nr.startsWith("5") || nr.startsWith("91");
 }
@@ -55,9 +49,7 @@ function startsWithPrefix(sachkonto, prefix) {
   return nr.startsWith(prefix);
 }
 
-// ==============================
-// Filter
-// ==============================
+// ------------------ Filter ------------------
 function getSelectedGruppen() {
   const sel = document.getElementById("gruppeSelect");
   return sel ? [...sel.selectedOptions].map(o => o.value) : [];
@@ -69,12 +61,7 @@ function filterRows(rows, gruppen) {
   return rows.filter(r => set.has(String(r.gruppe)));
 }
 
-// ==============================
-// Aggregation pro Kontogruppe (mit Vorzeichenwirkung)
-// - Erträge:      ertraege += -betrag
-// - Aufwendungen: aufwendungen += betrag
-// - Saldo: aufwendungen - ertraege
-// ==============================
+// ------------------ Aggregation: Detail (Kontogruppe) ------------------
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
@@ -88,38 +75,26 @@ function aggregateByKontogruppe(rows) {
     }
     const obj = map.get(kg);
 
-    if (istErtrag) obj.ertraege += -betrag;      // ✅ Vorzeichen wirkt
-    else obj.aufwendungen += betrag;             // ✅ Vorzeichen wirkt
+    // Vorzeichenwirkung:
+    if (istErtrag) obj.ertraege += -betrag;
+    else obj.aufwendungen += betrag;
 
     obj.saldo = obj.aufwendungen - obj.ertraege;
   }
 
-  const out = [...map.values()];
-
-  out.sort((a, b) => {
+  const out = [...map.values()].sort((a, b) => {
     const na = kontogruppeNum(a.kontogruppe);
     const nb = kontogruppeNum(b.kontogruppe);
-
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     if (!isNaN(na) && isNaN(nb)) return -1;
     if (isNaN(na) && !isNaN(nb)) return 1;
-
     return a.kontogruppe.localeCompare(b.kontogruppe, "de");
   });
 
   return out;
 }
 
-// ==============================
-// NEU: Gesamtübersicht berechnen
-// - Erträge gesamt (ohne 91): nur Erträge, deren Sachkonto NICHT mit 91 beginnt
-// - Aufwendungen gesamt (ohne 92): nur Aufwendungen, deren Sachkonto NICHT mit 92 beginnt
-// - Ergebnis = Aufwand - Ertrag
-//
-// Erträge/Aufwand werden dabei mit Vorzeichenwirkung summiert:
-//   Ertrag:      sum += -betrag
-//   Aufwand:     sum += betrag
-// ==============================
+// ------------------ Aggregation: Gesamtübersicht ------------------
 function computeOverviewTotals(rows) {
   let ertraegeOhne91 = 0;
   let aufwendungenOhne92 = 0;
@@ -129,14 +104,12 @@ function computeOverviewTotals(rows) {
     const istErtrag = isErtragBySachkonto(r.sachkonto);
 
     if (istErtrag) {
-      // nur wenn NICHT 91...
       if (!startsWithPrefix(r.sachkonto, "91")) {
-        ertraegeOhne91 += -betrag;
+        ertraegeOhne91 += -betrag;   // Vorzeichenwirkung
       }
     } else {
-      // Aufwand, aber ohne 92...
       if (!startsWithPrefix(r.sachkonto, "92")) {
-        aufwendungenOhne92 += betrag;
+        aufwendungenOhne92 += betrag; // Vorzeichenwirkung
       }
     }
   }
@@ -152,9 +125,6 @@ function setBarWidth(barEl, value, maxValue) {
   barEl.style.width = `${w}%`;
 }
 
-// ==============================
-// Rendering: Summary
-// ==============================
 function renderOverview(overview) {
   const elErtrag = document.getElementById("sumErtrag");
   const elAufwand = document.getElementById("sumAufwand");
@@ -168,7 +138,6 @@ function renderOverview(overview) {
   const barAufwand = document.getElementById("barAufwand");
   const barErgebnis = document.getElementById("barErgebnis");
 
-  // Skalierung: größte absolute Zahl von Ertrag/Aufwand/Ergebnis
   const maxAbs = Math.max(
     Math.abs(overview.ertraegeOhne91),
     Math.abs(overview.aufwendungenOhne92),
@@ -181,18 +150,14 @@ function renderOverview(overview) {
   setBarWidth(barErgebnis, overview.ergebnis, maxAbs);
 }
 
-// ==============================
-// Rendering: Detail-Tabelle
-// ==============================
+// ------------------ Render: Tabelle ------------------
 function renderTable(data) {
   const kgSorter = (a, b) => {
     const na = kontogruppeNum(a);
     const nb = kontogruppeNum(b);
-
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     if (!isNaN(na) && isNaN(nb)) return -1;
     if (isNaN(na) && !isNaN(nb)) return 1;
-
     return String(a).localeCompare(String(b), "de");
   };
 
@@ -202,34 +167,10 @@ function renderTable(data) {
       layout: "fitColumns",
       height: "520px",
       columns: [
-        {
-          title: "Kontogruppe",
-          field: "kontogruppe",
-          sorter: kgSorter,
-          headerFilter: "input",
-          widthGrow: 3,
-        },
-        {
-          title: "Aufwendungen",
-          field: "aufwendungen",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
-        {
-          title: "Erträge",
-          field: "ertraege",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
-        {
-          title: "Saldo",
-          field: "saldo",
-          sorter: "number",
-          hozAlign: "right",
-          formatter: c => fmtEUR(c.getValue()),
-        },
+        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
+        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Saldo", field: "saldo", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
       ],
     });
 
@@ -240,51 +181,7 @@ function renderTable(data) {
   }
 }
 
-// ==============================
-// Diagramm (wie bisher – unverändert)
-// ==============================
-function renderChart(data) {
-  const y = data.map(d => d.kontogruppe);
-
-  const traceErtraege = {
-    type: "bar",
-    orientation: "h",
-    name: "Erträge",
-    y,
-    x: data.map(d => d.ertraege),
-    marker: { color: "green" },
-  };
-
-  const traceAufwendungen = {
-    type: "bar",
-    orientation: "h",
-    name: "Aufwendungen",
-    y,
-    x: data.map(d => d.aufwendungen),
-    marker: { color: "red" },
-  };
-
-  Plotly.newPlot(
-    "chart",
-    [traceErtraege, traceAufwendungen],
-    {
-      barmode: "group",
-      margin: { l: 280, r: 20, t: 10, b: 40 },
-      xaxis: { title: "EUR", zeroline: true },
-      yaxis: {
-        categoryorder: "array",
-        categoryarray: y,
-        autorange: "reversed",
-      },
-      legend: { orientation: "h" },
-    },
-    { responsive: true }
-  );
-}
-
-// ==============================
-// Render-Pipeline
-// ==============================
+// ------------------ Render-Pipeline ------------------
 function rerender() {
   const selected = getSelectedGruppen();
   const filtered = filterRows(raw, selected);
@@ -296,12 +193,9 @@ function rerender() {
   setStatus(`Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`);
 
   renderTable(agg);
-  renderChart(agg);
 }
 
-// ==============================
-// Init
-// ==============================
+// ------------------ Init ------------------
 async function main() {
   const res = await fetch(DATA_URL);
   if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${res.status})`);
@@ -314,8 +208,9 @@ async function main() {
     betrag: parseGermanNumber(r.betrag),
   }));
 
-  // Filterliste
   const sel = document.getElementById("gruppeSelect");
+
+  // Optionen füllen
   uniqueSorted(raw.map(r => r.gruppe)).forEach(g => {
     const opt = document.createElement("option");
     opt.value = g;
@@ -323,12 +218,14 @@ async function main() {
     sel.appendChild(opt);
   });
 
+  // ✅ Sofortiges Aktualisieren beim Anklicken/Ändern der Auswahl
+  sel.addEventListener("change", rerender);
+
+  // Button "Alle anzeigen" bleibt
   document.getElementById("btnAll").onclick = () => {
     [...sel.options].forEach(o => (o.selected = false));
     rerender();
   };
-
-  document.getElementById("btnApply").onclick = rerender;
 
   rerender();
 }
