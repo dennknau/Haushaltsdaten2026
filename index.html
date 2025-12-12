@@ -1,88 +1,48 @@
-<script>
-async function loadData() {
-    const response = await fetch('haushalt.json');
-    const data = await response.json();
-    console.log("Beispieldatensatz:", data[0]); // hilft beim Debuggen
-    return data;
-}
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Haushaltsplan – Interaktiv</title>
 
-loadData().then(data => {
-    // 1. Alle Gruppen (Spalte "gruppe") einsammeln
-    const gruppen = [...new Set(data.map(d => d.gruppe))];
+  <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 
-    const select = document.getElementById('gruppenFilter');
-    gruppen.forEach(g => {
-        const opt = document.createElement('option');
-        opt.value = g;
-        opt.textContent = g;
-        select.appendChild(opt);
-    });
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
+    header { display:flex; gap:16px; align-items:end; flex-wrap:wrap; }
+    .card { border:1px solid #e5e5e5; border-radius:12px; padding:16px; margin-top:16px; }
+    label { font-weight:600; display:block; margin-bottom:6px; }
+    select { min-width: 320px; min-height: 120px; }
+    .hint { color:#666; font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <h1>Haushaltsplan</h1>
 
-    // 2. Start: erste Gruppe anzeigen
-    drawChartFor(gruppen[0], data);
+  <header class="card">
+    <div>
+      <label for="gruppeSelect">Kostenstellen (gruppe) filtern</label>
+      <select id="gruppeSelect" multiple></select>
+      <div class="hint">Mehrfachauswahl: Strg/Cmd halten. Leer = alle.</div>
+    </div>
+    <div>
+      <button id="btnAll">Alle anzeigen</button>
+      <button id="btnApply">Filter anwenden</button>
+    </div>
+  </header>
 
-    // 3. Bei Änderung neu zeichnen
-    select.addEventListener('change', () => {
-        drawChartFor(select.value, data);
-    });
-});
+  <div class="card">
+    <h2>Diagramm (nach kontogruppe)</h2>
+    <div id="chart" style="height:520px;"></div>
+  </div>
 
-// Hilfsfunktion: Betrag aus Datensatz holen und in Zahl umwandeln
-function getAmount(d) {
-    // Versuche verschiedene mögliche Schlüsselnamen
-    let raw =
-        d.betrag ??
-        d['€ nach HH'] ??
-        d['Euro_nach_HH'] ??
-        d['Euro'] ??
-        null;
+  <div class="card">
+    <h2>Tabelle (nach kontogruppe)</h2>
+    <div id="table"></div>
+  </div>
 
-    if (raw === null) return 0;
-
-    // In String verwandeln
-    raw = String(raw).trim();
-
-    // Euro-Zeichen und Leerzeichen entfernen
-    raw = raw.replace('€', '').replace(/\s/g, '');
-
-    // Tausenderpunkte entfernen, Komma in Punkt umwandeln
-    raw = raw.replace(/\./g, '').replace(',', '.');
-
-    const num = Number(raw);
-    return isNaN(num) ? 0 : num;
-}
-
-function drawChartFor(gruppe, data) {
-    const ctx = document.getElementById('chart1').getContext('2d');
-
-    const filtered = data.filter(d => d.gruppe === gruppe);
-
-    const labels = filtered.map(d => d.sachkonto || d['SK & Bezeichnung'] || 'ohne Bezeichnung');
-    const values = filtered.map(d => getAmount(d));
-
-    console.log("Zeichne für Gruppe:", gruppe, "Anzahl Datensätze:", filtered.length);
-    console.log("Beispiele Werte:", values.slice(0, 5));
-
-    if (window.myChart) {
-        window.myChart.destroy();
-    }
-
-    window.myChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: '€ nach HH',
-                data: values
-            }]
-        },
-        options: {
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-}
-</script>
+  <script src="./app.js"></script>
+</body>
+</html>
