@@ -10,25 +10,121 @@
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 20px; }
-    header { display:flex; gap:16px; align-items:end; flex-wrap:wrap; }
-    .card { border:1px solid #e5e5e5; border-radius:12px; padding:16px; margin-top:16px; }
-    label { font-weight:600; display:block; margin-bottom:6px; }
-    select { min-width: 340px; min-height: 140px; }
-    .hint { color:#666; font-size: 0.95rem; }
-    button { padding: 8px 12px; border-radius: 10px; border: 1px solid #ddd; background: #fff; cursor: pointer; }
-    button:hover { background: #f6f6f6; }
+    /* =========================
+       Grundlayout & Typografie
+       ========================= */
+    body {
+      font-family: "Calibri Light", Calibri, "Segoe UI", Arial, sans-serif;
+      margin: 20px;
+      background-color: #078930;
+      color: #111;
+    }
 
-    /* Summary Table + Mini Chart */
-    table.summary { width: 100%; border-collapse: collapse; }
-    table.summary th, table.summary td { padding: 10px 12px; border-top: 1px solid #eee; vertical-align: middle; }
-    table.summary th { text-align: left; font-weight: 700; }
-    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-    .barWrap { width: 100%; height: 14px; background: #f2f2f2; border-radius: 999px; overflow: hidden; }
-    .bar { height: 100%; width: 0%; border-radius: 999px; }
-    .bar.red { background: red; }
-    .bar.green { background: green; }
-    .bar.gray { background: #666; }
+    h1 {
+      font-size: 1.6rem;   /* kleiner als Standard */
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    h2 {
+      font-size: 1.2rem;   /* kleiner als vorher */
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      color: #111;
+    }
+
+    /* =========================
+       Layout
+       ========================= */
+    header {
+      display:flex;
+      gap:16px;
+      align-items:end;
+      flex-wrap:wrap;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    select {
+      min-width: 340px;
+      min-height: 140px;
+      font-family: inherit;
+    }
+
+    button {
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover {
+      background: #f2f2f2;
+    }
+
+    .hint {
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    /* =========================
+       Summary Table + Balken
+       ========================= */
+    table.summary {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.summary th,
+    table.summary td {
+      padding: 10px 12px;
+      border-top: 1px solid #eee;
+      vertical-align: middle;
+    }
+
+    table.summary th {
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .num {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .barWrap {
+      width: 100%;
+      height: 14px;
+      background: #e6e6e6;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 999px;
+    }
+
+    .bar.red { background: #d32f2f; }
+    .bar.green { background: #2e7d32; }
+    .bar.gray { background: #616161; }
 
     .rowTitle { width: 34%; }
     .rowBar { width: 46%; }
@@ -43,7 +139,7 @@
     <div>
       <label for="gruppeSelect">Kostenstellen (gruppe) filtern</label>
       <select id="gruppeSelect" multiple></select>
-      <div class="hint">Mehrfachauswahl: Strg/Cmd halten. Keine Auswahl = alle.</div>
+      <div class="hint">Mehrfachauswahl: Strg/Cmd halten · Keine Auswahl = alle</div>
     </div>
 
     <div>
@@ -55,7 +151,7 @@
 
   <div class="card">
     <h2>Gesamtübersicht</h2>
-    <table class="summary" id="summaryTable">
+    <table class="summary">
       <thead>
         <tr>
           <th class="rowTitle">Kennzahl</th>
@@ -81,10 +177,6 @@
         </tr>
       </tbody>
     </table>
-
-    <div class="hint" style="margin-top:10px;">
-      Hinweis: Erträge werden über Sachkonto (Prefix 5/91) klassifiziert; in der Übersicht werden 91er-Erträge ausgeschlossen. Aufwendungen schließen 92er-Sachkonten aus.
-    </div>
   </div>
 
   <div class="card">
