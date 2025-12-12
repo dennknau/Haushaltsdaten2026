@@ -10,48 +10,182 @@
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <style>
+    /* =========================
+       Responsive Typografie
+       =========================
+       - Basis skaliert von ~14px (mobile) bis ~17px (desktop)
+       - Überschriften skalieren ebenfalls mit
+    */
+    :root{
+      --bg: #078930;
+      --card: #ffffff;
+      --text: #111;
+      --muted: #555;
+
+      --radius: 12px;
+      --shadow: 0 2px 8px rgba(0,0,0,.08);
+
+      --fs-base: clamp(0.90rem, 0.85rem + 0.35vw, 1.06rem);
+      --fs-h1: clamp(1.25rem, 1.05rem + 1.1vw, 1.75rem);
+      --fs-h2: clamp(1.05rem, 0.95rem + 0.55vw, 1.25rem);
+      --fs-hint: clamp(0.82rem, 0.78rem + 0.25vw, 0.95rem);
+
+      --pad: clamp(12px, 10px + 1vw, 18px);
+      --gap: clamp(10px, 8px + 0.7vw, 16px);
+    }
+
+    html { font-size: 16px; }
+
     body{
       font-family:"Calibri Light", Calibri, "Segoe UI", Arial, sans-serif;
-      margin:20px;
-      background:#078930;
-      color:#111;
+      margin: clamp(12px, 2vw, 20px);
+      background: var(--bg);
+      color: var(--text);
+      font-size: var(--fs-base);
+      line-height: 1.35;
     }
-    h1{font-size:1.6rem;font-weight:600;margin:0 0 8px 0;color:#fff;}
-    h2{font-size:1.2rem;font-weight:600;margin:0 0 12px 0;color:#111;}
+
+    h1{
+      font-size: var(--fs-h1);
+      font-weight: 600;
+      margin: 0 0 8px 0;
+      color:#fff;
+      letter-spacing: 0.2px;
+    }
+
+    h2{
+      font-size: var(--fs-h2);
+      font-weight: 600;
+      margin: 0 0 12px 0;
+      color: var(--text);
+    }
 
     .card{
-      background:#fff;
-      border-radius:12px;
-      padding:16px;
-      margin-top:16px;
-      box-shadow:0 2px 8px rgba(0,0,0,.08);
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: var(--pad);
+      margin-top: var(--gap);
+      box-shadow: var(--shadow);
     }
 
-    .filters{display:flex;flex-direction:column;gap:14px;max-width:560px;}
-    .filterRow{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end;}
-    label{font-weight:600;display:block;margin-bottom:6px;}
-    select{width:100%;font-family:inherit;}
-    select.multi{min-height:150px;}
+    /* =========================
+       Filter untereinander
+       ========================= */
+    .filters{
+      display:flex;
+      flex-direction:column;
+      gap: var(--gap);
+      max-width: 640px;
+    }
+
+    .filterRow{
+      display:grid;
+      grid-template-columns: 1fr auto;
+      gap: var(--gap);
+      align-items:end;
+    }
+
+    label{
+      font-weight: 600;
+      display:block;
+      margin-bottom: 6px;
+      font-size: calc(var(--fs-base) * 0.98);
+    }
+
+    select{
+      width: 100%;
+      font-family: inherit;
+      font-size: var(--fs-base);
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    select.multi{
+      min-height: clamp(140px, 18vh, 220px);
+    }
+
     button{
-      padding:8px 12px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;
-      font-family:inherit;white-space:nowrap;
+      font-family: inherit;
+      font-size: var(--fs-base);
+      padding: clamp(8px, 0.7vw + 6px, 10px) clamp(10px, 0.9vw + 8px, 14px);
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+      min-height: 40px; /* Touch friendly */
     }
-    button:hover{background:#f2f2f2;}
-    .hint{color:#555;font-size:.9rem;}
+    button:hover{ background:#f2f2f2; }
 
-    table.summary{width:100%;border-collapse:collapse;}
-    table.summary th, table.summary td{padding:10px 12px;border-top:1px solid #eee;vertical-align:middle;}
-    table.summary th{text-align:left;font-weight:600;}
-    .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
-    .barWrap{width:100%;height:14px;background:#e6e6e6;border-radius:999px;overflow:hidden;}
-    .bar{height:100%;width:0%;border-radius:999px;}
+    .hint{
+      color: var(--muted);
+      font-size: var(--fs-hint);
+    }
+
+    /* =========================
+       Summary Tabelle
+       ========================= */
+    table.summary{
+      width:100%;
+      border-collapse:collapse;
+      font-size: var(--fs-base);
+    }
+    table.summary th, table.summary td{
+      padding: clamp(8px, 0.8vw + 6px, 12px);
+      border-top: 1px solid #eee;
+      vertical-align: middle;
+    }
+    table.summary th{
+      text-align:left;
+      font-weight:600;
+    }
+    .num{
+      text-align:right;
+      white-space:nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .barWrap{
+      width:100%;
+      height: 14px;
+      background:#e6e6e6;
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .bar{height:100%; width:0%; border-radius:999px;}
     .bar.red{background:#d32f2f;}
     .bar.green{background:#2e7d32;}
     .bar.gray{background:#616161;}
 
-    .pieGrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
-    @media(max-width:900px){.pieGrid{grid-template-columns:1fr;}}
-    .pieBox{height:420px;}
+    /* =========================
+       Kreisdiagramme
+       ========================= */
+    .pieGrid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+    @media(max-width: 900px){
+      .pieGrid{ grid-template-columns: 1fr; }
+    }
+
+    .pieBox{
+      height: clamp(320px, 42vh, 460px);
+    }
+
+    /* =========================
+       Mobile: Reset-Buttons unter Select
+       ========================= */
+    @media(max-width: 520px){
+      .filterRow{
+        grid-template-columns: 1fr;
+      }
+      .filterRow button{
+        width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
