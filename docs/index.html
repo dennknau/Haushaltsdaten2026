@@ -5,8 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Interaktiver Haushaltsplan der Gemeinde Jesberg</title>
 
+  <!-- Tabulator -->
   <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
   <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+
+  <!-- Plotly (für Kreisdiagramme) -->
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
   <style>
@@ -17,106 +20,134 @@
       color: #111;
     }
 
-    h1 { font-size: 1.6rem; color:#fff; }
-    h2 { font-size: 1.2rem; margin-bottom:12px; }
+    h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 8px 0; color: #fff; }
+    h2 { font-size: 1.2rem; font-weight: 600; margin: 0 0 12px 0; color: #111; }
 
     .card {
-      background:#fff;
-      border-radius:12px;
-      padding:16px;
-      margin-top:16px;
-      box-shadow:0 2px 8px rgba(0,0,0,.08);
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
 
     header {
-      display:grid;
-      grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
-      gap:16px;
-      align-items:end;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      align-items: end;
     }
 
-    label { font-weight:600; }
-    select { width:100%; min-height:140px; }
-    select.single { min-height:auto; }
+    label { font-weight: 600; display:block; margin-bottom: 6px; }
+    select { width: 100%; font-family: inherit; }
+    select.multi { min-height: 140px; }
 
     button {
-      padding:8px 14px;
-      border-radius:10px;
-      border:1px solid #ddd;
-      background:#fff;
-      cursor:pointer;
+      padding: 8px 14px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      background: #fff;
+      cursor: pointer;
+      font-family: inherit;
     }
+    button:hover { background: #f2f2f2; }
 
-    .hint { color:#555; font-size:.9rem; }
+    .hint { color: #555; font-size: 0.9rem; }
 
-    .pieGrid {
-      display:grid;
-      grid-template-columns:1fr 1fr;
-      gap:16px;
-    }
-    @media(max-width:900px){ .pieGrid{grid-template-columns:1fr;} }
+    /* Summary */
+    table.summary { width: 100%; border-collapse: collapse; }
+    table.summary th, table.summary td { padding: 10px 12px; border-top: 1px solid #eee; }
+    table.summary th { text-align: left; font-weight: 600; }
 
-    .pieBox{height:420px;}
+    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .barWrap { width: 100%; height: 14px; background: #e6e6e6; border-radius: 999px; overflow: hidden; }
+    .bar { height: 100%; width: 0%; border-radius: 999px; }
+    .bar.red { background: #d32f2f; }
+    .bar.green { background: #2e7d32; }
+    .bar.gray { background: #616161; }
+
+    /* Pies */
+    .pieGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .pieGrid { grid-template-columns: 1fr; } }
+    .pieBox { height: 420px; }
   </style>
 </head>
 
 <body>
-<h1>Interaktiver Haushaltsplan der Gemeinde Jesberg</h1>
+  <h1>Interaktiver Haushaltsplan der Gemeinde Jesberg</h1>
 
-<header class="card">
-  <div>
-    <label for="jahrSelect">Jahr</label>
-    <select id="jahrSelect" class="single"></select>
-  </div>
-
-  <div>
-    <label for="gruppe1Select">Gruppe 1</label>
-    <select id="gruppe1Select" class="single"></select>
-  </div>
-
-  <div>
-    <label for="gruppeSelect">Kostenstellen</label>
-    <select id="gruppeSelect" multiple></select>
-    <div class="hint">Mehrfachauswahl möglich · leer = alle</div>
-  </div>
-
-  <div>
-    <button id="btnAll">Alle Kostenstellen</button>
-    <div class="hint" id="status"></div>
-  </div>
-</header>
-
-<!-- Gesamtübersicht -->
-<div class="card">
-  <h2>Gesamtübersicht</h2>
-  <table class="summary">
-    <tr><td>Erträge gesamt</td><td id="sumErtrag"></td></tr>
-    <tr><td>Aufwendungen gesamt</td><td id="sumAufwand"></td></tr>
-    <tr><td><b>Ergebnis</b></td><td id="sumErgebnis"></td></tr>
-  </table>
-</div>
-
-<!-- Kreisdiagramme -->
-<div class="card">
-  <h2>Kreisdiagramme nach Kontogruppe</h2>
-  <div class="pieGrid">
+  <header class="card">
     <div>
-      <div class="hint">Erträge</div>
-      <div id="pieErtraege" class="pieBox"></div>
+      <label for="jahrSelect">Jahr</label>
+      <select id="jahrSelect"></select>
     </div>
+
     <div>
-      <div class="hint">Aufwendungen</div>
-      <div id="pieAufwendungen" class="pieBox"></div>
+      <label for="gruppe1Select">Gruppe 1</label>
+      <select id="gruppe1Select"></select>
+    </div>
+
+    <div>
+      <label for="gruppeSelect">Kostenstellen</label>
+      <select id="gruppeSelect" class="multi" multiple></select>
+      <div class="hint">Mehrfachauswahl: Strg/Cmd halten · Keine Auswahl = alle</div>
+    </div>
+
+    <div>
+      <button id="btnAll" type="button">Alle Kostenstellen</button>
+      <div class="hint" id="status" style="margin-top:8px;"></div>
+    </div>
+  </header>
+
+  <div class="card">
+    <h2>Gesamtübersicht</h2>
+    <table class="summary">
+      <thead>
+        <tr>
+          <th>Kennzahl</th>
+          <th>Grafik</th>
+          <th class="num">Summe</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Erträge gesamt</td>
+          <td><div class="barWrap"><div id="barErtrag" class="bar green"></div></div></td>
+          <td id="sumErtrag" class="num">–</td>
+        </tr>
+        <tr>
+          <td>Aufwendungen gesamt</td>
+          <td><div class="barWrap"><div id="barAufwand" class="bar red"></div></div></td>
+          <td id="sumAufwand" class="num">–</td>
+        </tr>
+        <tr>
+          <td><b>Ergebnis</b></td>
+          <td><div class="barWrap"><div id="barErgebnis" class="bar gray"></div></div></td>
+          <td id="sumErgebnis" class="num"><b>–</b></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Kreisdiagramme nach Kontogruppe</h2>
+    <div class="pieGrid">
+      <div>
+        <div class="hint" style="margin-bottom:8px;">Erträge nach Kontogruppe</div>
+        <div id="pieErtraege" class="pieBox"></div>
+      </div>
+      <div>
+        <div class="hint" style="margin-bottom:8px;">Aufwendungen nach Kontogruppe</div>
+        <div id="pieAufwendungen" class="pieBox"></div>
+      </div>
     </div>
   </div>
-</div>
 
-<!-- Tabelle -->
-<div class="card">
-  <h2>Ergebnisübersicht</h2>
-  <div id="table"></div>
-</div>
+  <div class="card">
+    <h2>Ergebnisübersicht</h2>
+    <div id="table"></div>
+  </div>
 
-<script src="./app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
