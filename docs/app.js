@@ -3,11 +3,7 @@ const DATA_URL = "./haushalt.json";
 let raw = [];
 let tab = null;
 
-/* ---------- Feldzugriff (robust) ---------- */
-function getField(r, ...keys) {
-  for (const k of keys) if (r && r[k] !== undefined && r[k] !== null) return r[k];
-  return "";
-}
+const ALL_VALUE = "__ALL__";
 
 /* ---------- Helpers ---------- */
 function fmtEUR(n) {
@@ -29,11 +25,6 @@ function uniqueSorted(arr) {
     .sort((a, b) => a.localeCompare(b, "de"));
 }
 
-function kontogruppeNum(kg) {
-  const m = String(kg ?? "").match(/^\s*(\d+)/);
-  return m ? parseInt(m[1], 10) : NaN;
-}
-
 function extractSachkontoNumber(sachkonto) {
   const m = String(sachkonto ?? "").match(/^\s*(\d+)/);
   return m ? m[1] : "";
@@ -44,54 +35,65 @@ function isErtragBySachkonto(sachkonto) {
   return nr.startsWith("5") || nr.startsWith("91");
 }
 
-/* ---------- UI Getter ---------- */
-function $id(id) { return document.getElementById(id); }
-function getSelectedValue(id) { const el = $id(id); return el ? el.value : ""; }
-function getSelectedMulti(id) { const el = $id(id); return el ? [...el.selectedOptions].map(o => o.value) : []; }
+function kontogruppeNum(kg) {
+  const m = String(kg ?? "").match(/^\s*(\d+)/);
+  return m ? parseInt(m[1], 10) : NaN;
+}
 
-function fillSelect(el, values) {
+/* ---------- DOM Helper ---------- */
+const $ = id => document.getElementById(id);
+
+/* ---------- Select Helper ---------- */
+function fillSelect(el, values, withAll = false) {
   el.innerHTML = "";
+
+  if (withAll) {
+    el.add(new Option("Alle anzeigen", ALL_VALUE));
+  }
+
   values.forEach(v => el.add(new Option(v, v)));
 }
 
 /* ---------- Kaskade ---------- */
 function rebuildGruppe1Options() {
-  const jahr = getSelectedValue("jahrSelect");
-  const g1Select = $id("gruppe1Select");
+  const jahr = $("jahrSelect").value;
 
-  const g1Values = uniqueSorted(raw.filter(r => r.jahr === jahr).map(r => r.gruppe1));
-  fillSelect(g1Select, g1Values);
+  const values = uniqueSorted(
+    raw.filter(r => r.jahr === jahr).map(r => r.gruppe1)
+  );
 
-  if (g1Values.length) g1Select.value = g1Values[0];
+  fillSelect($("gruppe1Select"), values, true);
+  $("gruppe1Select").value = ALL_VALUE;
 }
 
 function rebuildGruppeOptions() {
-  const jahr = getSelectedValue("jahrSelect");
-  const g1 = getSelectedValue("gruppe1Select");
-  const gruppeSelect = $id("gruppeSelect");
+  const jahr = $("jahrSelect").value;
+  const g1 = $("gruppe1Select").value;
 
-  const gruppen = uniqueSorted(
-    raw.filter(r => r.jahr === jahr && r.gruppe1 === g1).map(r => r.gruppe)
-  );
+  let rows = raw.filter(r => r.jahr === jahr);
+  if (g1 !== ALL_VALUE) {
+    rows = rows.filter(r => r.gruppe1 === g1);
+  }
 
-  gruppeSelect.innerHTML = "";
-  gruppen.forEach(g => gruppeSelect.add(new Option(g, g)));
+  const gruppen = uniqueSorted(rows.map(r => r.gruppe));
+  const sel = $("gruppeSelect");
+  sel.innerHTML = "";
+  gruppen.forEach(g => sel.add(new Option(g, g)));
 }
 
-/* ---------- Daten & Aggregation ---------- */
+/* ---------- Aggregation ---------- */
 function aggregateByKontogruppe(rows) {
   const map = new Map();
 
   for (const r of rows) {
-    const kg = String(r.kontogruppe ?? "(ohne kontogruppe)");
-    const betrag = Number(r.betrag ?? 0);
-    const istErtrag = isErtragBySachkonto(r.sachkonto);
-
+    const kg = r.kontogruppe || "(ohne kontogruppe)";
     if (!map.has(kg)) map.set(kg, { kontogruppe: kg, aufwendungen: 0, ertraege: 0 });
-    const o = map.get(kg);
 
-    if (istErtrag) o.ertraege += -betrag;
-    else o.aufwendungen += betrag;
+    if (isErtragBySachkonto(r.sachkonto)) {
+      map.get(kg).ertraege += -r.betrag;
+    } else {
+      map.get(kg).aufwendungen += r.betrag;
+    }
   }
 
   return [...map.values()].sort((a, b) => {
@@ -105,60 +107,38 @@ function aggregateByKontogruppe(rows) {
 }
 
 /* ---------- Übersicht ---------- */
-function setBarWidth(barEl, value, maxValue) {
-  if (!barEl) return;
-  const w = Math.min(100, (Math.abs(value) / Math.max(maxValue, 1)) * 100);
-  barEl.style.width = `${w}%`;
-}
-
 function renderOverview(rows) {
-  let ertraege = 0;
-  let aufwendungen = 0;
+  let er = 0, aw = 0;
 
-  for (const r of rows) {
-    const betrag = Number(r.betrag ?? 0);
-    if (isErtragBySachkonto(r.sachkonto)) ertraege += -betrag;
-    else aufwendungen += betrag;
-  }
+  rows.forEach(r => {
+    if (isErtragBySachkonto(r.sachkonto)) er += -r.betrag;
+    else aw += r.betrag;
+  });
 
-  const ergebnis = aufwendungen - ertraege;
+  const erg = aw - er;
 
-  $id("sumErtrag").textContent = fmtEUR(ertraege);
-  $id("sumAufwand").textContent = fmtEUR(aufwendungen);
+  $("sumErtrag").textContent = fmtEUR(er);
+  $("sumAufwand").textContent = fmtEUR(aw);
 
   let label = "Ausgeglichen";
-  let displayValue = 0;
-  if (ergebnis < 0) { label = "Überschuss"; displayValue = Math.abs(ergebnis); }
-  else if (ergebnis > 0) { label = "Defizit"; displayValue = ergebnis; }
+  let value = 0;
+  if (erg < 0) { label = "Überschuss"; value = Math.abs(erg); }
+  else if (erg > 0) { label = "Defizit"; value = erg; }
 
-  $id("sumErgebnis").innerHTML = `<b>${fmtEUR(displayValue)} (${label})</b>`;
-
-  const maxAbs = Math.max(Math.abs(ertraege), Math.abs(aufwendungen), Math.abs(ergebnis), 1);
-  setBarWidth($id("barErtrag"), ertraege, maxAbs);
-  setBarWidth($id("barAufwand"), aufwendungen, maxAbs);
-  setBarWidth($id("barErgebnis"), ergebnis, maxAbs);
+  $("sumErgebnis").innerHTML = `<b>${fmtEUR(value)} (${label})</b>`;
 }
 
 /* ---------- Tabelle ---------- */
 function renderTable(agg) {
-  const kgSorter = (a, b) => {
-    const na = kontogruppeNum(a);
-    const nb = kontogruppeNum(b);
-    if (!isNaN(na) && !isNaN(nb)) return na - nb;
-    if (!isNaN(na)) return -1;
-    if (!isNaN(nb)) return 1;
-    return String(a).localeCompare(String(b), "de");
-  };
-
   if (!tab) {
     tab = new Tabulator("#table", {
       data: agg,
       layout: "fitColumns",
       height: false,
       columns: [
-        { title: "Kontogruppe", field: "kontogruppe", sorter: kgSorter, headerFilter: "input", widthGrow: 3 },
-        { title: "Aufwendungen", field: "aufwendungen", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
-        { title: "Erträge", field: "ertraege", sorter: "number", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Kontogruppe", field: "kontogruppe", widthGrow: 3 },
+        { title: "Aufwendungen", field: "aufwendungen", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
+        { title: "Erträge", field: "ertraege", hozAlign: "right", formatter: c => fmtEUR(c.getValue()) },
       ],
     });
   } else {
@@ -168,143 +148,85 @@ function renderTable(agg) {
 
 /* ---------- Pies ---------- */
 function renderPies(agg) {
-  if (typeof Plotly === "undefined") return;
+  const labels = agg.map(a => a.kontogruppe);
 
-  const elE = $id("pieErtraege");
-  const elA = $id("pieAufwendungen");
-  if (!elE || !elA) return;
-
-  const labels = agg.map(d => d.kontogruppe);
-  const valuesE = agg.map(d => Math.max(0, d.ertraege));
-  const valuesA = agg.map(d => Math.max(0, d.aufwendungen));
-
-  const ePairs = labels.map((l, i) => [l, valuesE[i]]).filter(([, v]) => v > 0);
-  const aPairs = labels.map((l, i) => [l, valuesA[i]]).filter(([, v]) => v > 0);
-
-  const layout = { margin: { l: 10, r: 10, t: 10, b: 10 }, showlegend: true };
-
-  Plotly.react(elE, [{
+  Plotly.react("pieErtraege", [{
     type: "pie",
-    labels: ePairs.map(p => p[0]),
-    values: ePairs.map(p => p[1]),
-    textinfo: "percent",
-    hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-  }], layout, { responsive: true });
+    labels,
+    values: agg.map(a => Math.max(0, a.ertraege)),
+  }], { margin: { t: 10, b: 10 } });
 
-  Plotly.react(elA, [{
+  Plotly.react("pieAufwendungen", [{
     type: "pie",
-    labels: aPairs.map(p => p[0]),
-    values: aPairs.map(p => p[1]),
-    textinfo: "percent",
-    hovertemplate: "%{label}<br>%{value:.2f} €<br>%{percent}<extra></extra>",
-  }], layout, { responsive: true });
+    labels,
+    values: agg.map(a => Math.max(0, a.aufwendungen)),
+  }], { margin: { t: 10, b: 10 } });
 }
 
 /* ---------- Render ---------- */
 function rerender() {
-  const jahr = getSelectedValue("jahrSelect");
-  const g1 = getSelectedValue("gruppe1Select");
-  const gruppen = getSelectedMulti("gruppeSelect");
+  const jahr = $("jahrSelect").value;
+  const g1 = $("gruppe1Select").value;
+  const gruppen = [...$("gruppeSelect").selectedOptions].map(o => o.value);
 
-  const filtered = raw.filter(r => {
-    const okJahr = r.jahr === jahr;
-    const okG1 = r.gruppe1 === g1;
-    const okGruppe = gruppen.length ? gruppen.includes(r.gruppe) : true;
-    return okJahr && okG1 && okGruppe;
-  });
+  let rows = raw.filter(r => r.jahr === jahr);
+  if (g1 !== ALL_VALUE) rows = rows.filter(r => r.gruppe1 === g1);
+  if (gruppen.length) rows = rows.filter(r => gruppen.includes(r.gruppe));
 
-  renderOverview(filtered);
+  renderOverview(rows);
 
-  const agg = aggregateByKontogruppe(filtered);
+  const agg = aggregateByKontogruppe(rows);
   renderTable(agg);
+  renderPies(agg);
 
-  requestAnimationFrame(() => renderPies(agg));
-  setTimeout(() => renderPies(agg), 0);
-
-  $id("status").textContent = `Zeilen: ${filtered.length} | Kontogruppen: ${agg.length}`;
-}
-
-/* ---------- Reset-Buttons ---------- */
-function resetJahrToDefault() {
-  const jahrSelect = $id("jahrSelect");
-  if (jahrSelect.options.length) jahrSelect.selectedIndex = 0;
-
-  rebuildGruppe1Options();
-  rebuildGruppeOptions();
-  clearKostenstellenSelection();
-  rerender();
-}
-
-function resetGruppe1ToDefault() {
-  const g1Select = $id("gruppe1Select");
-  if (g1Select.options.length) g1Select.selectedIndex = 0;
-
-  rebuildGruppeOptions();
-  clearKostenstellenSelection();
-  rerender();
-}
-
-function clearKostenstellenSelection() {
-  const gruppeSelect = $id("gruppeSelect");
-  [...gruppeSelect.options].forEach(o => (o.selected = false));
+  $("status").textContent = `Zeilen: ${rows.length} | Kontogruppen: ${agg.length}`;
 }
 
 /* ---------- Init ---------- */
-async function main() {
-  const res = await fetch(DATA_URL);
-  if (!res.ok) throw new Error(`Konnte ${DATA_URL} nicht laden (HTTP ${res.status})`);
+fetch(DATA_URL)
+  .then(r => r.json())
+  .then(json => {
+    raw = json.map(r => ({
+      jahr: String(r.Jahr ?? r.jahr).trim(),
+      gruppe1: String(r.gruppe1).trim(),
+      gruppe: String(r.gruppe).trim(),
+      kontogruppe: String(r.kontogruppe).trim(),
+      sachkonto: String(r.sachkonto).trim(),
+      betrag: parseGermanNumber(r.betrag),
+    }));
 
-  const json = await res.json();
-  if (!Array.isArray(json)) throw new Error(`${DATA_URL} muss ein JSON-Array [...] sein.`);
+    fillSelect($("jahrSelect"), uniqueSorted(raw.map(r => r.jahr)));
+    $("jahrSelect").selectedIndex = 0;
 
-  // Normalisieren (Jahr kann groß geschrieben sein)
-  raw = json.map(r => ({
-    jahr: String(getField(r, "Jahr", "jahr")).trim(),
-    gruppe: String(getField(r, "gruppe")).trim(),
-    gruppe1: String(getField(r, "gruppe1")).trim(),
-    kontogruppe: String(getField(r, "kontogruppe")).trim(),
-    sachkonto: String(getField(r, "sachkonto")).trim(),
-    betrag: parseGermanNumber(getField(r, "betrag")),
-  }));
-
-  // Jahr-Optionen
-  const jahrSelect = $id("jahrSelect");
-  const jahre = uniqueSorted(raw.map(r => r.jahr));
-  fillSelect(jahrSelect, jahre);
-  if (jahre.length) jahrSelect.selectedIndex = 0;
-
-  // Kaskade initial
-  rebuildGruppe1Options();
-  rebuildGruppeOptions();
-
-  // Events
-  jahrSelect.addEventListener("change", () => {
     rebuildGruppe1Options();
     rebuildGruppeOptions();
-    clearKostenstellenSelection();
     rerender();
+
+    $("jahrSelect").onchange = () => {
+      rebuildGruppe1Options();
+      rebuildGruppeOptions();
+      rerender();
+    };
+
+    $("gruppe1Select").onchange = () => {
+      rebuildGruppeOptions();
+      rerender();
+    };
+
+    $("gruppeSelect").onchange = rerender;
+    $("resetGruppe").onclick = () => {
+      [...$("gruppeSelect").options].forEach(o => o.selected = false);
+      rerender();
+    };
+    $("resetGruppe1").onclick = () => {
+      $("gruppe1Select").value = ALL_VALUE;
+      rebuildGruppeOptions();
+      rerender();
+    };
+    $("resetJahr").onclick = () => {
+      $("jahrSelect").selectedIndex = 0;
+      rebuildGruppe1Options();
+      rebuildGruppeOptions();
+      rerender();
+    };
   });
-
-  $id("gruppe1Select").addEventListener("change", () => {
-    rebuildGruppeOptions();
-    clearKostenstellenSelection();
-    rerender();
-  });
-
-  $id("gruppeSelect").addEventListener("change", rerender);
-
-  // Reset je Filter
-  $id("resetJahr").addEventListener("click", resetJahrToDefault);
-  $id("resetGruppe1").addEventListener("click", resetGruppe1ToDefault);
-  $id("resetGruppe").addEventListener("click", () => {
-    clearKostenstellenSelection();
-    rerender();
-  });
-
-  rerender();
-}
-
-main().catch(err => {
-  console.error(err);
-  alert("Fehler: " + (err?.message ?? err));
-});
