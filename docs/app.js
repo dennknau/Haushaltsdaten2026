@@ -218,9 +218,15 @@ async function main() {
   }));
 
   // Jahr füllen
-  const jahre = uniqueSorted(raw.map(r => r.jahr));
-  fillSelect($("jahrSelect"), jahre, false);
-  if (jahre.length) $("jahrSelect").value = jahre[0];
+const jahre = uniqueSorted(raw.map(r => r.jahr));
+fillSelect($("jahrSelect"), jahre);
+
+// ✅ Standardjahr bevorzugt auf 2026 setzen
+if (jahre.includes("2026")) {
+  $("jahrSelect").value = "2026";
+} else if (jahre.length) {
+  $("jahrSelect").value = jahre[0];
+}
 
   // Initial kaskadieren
   rebuildGruppe1Options();     // setzt automatisch auf "Alle anzeigen"
@@ -272,3 +278,4 @@ main().catch(err => {
   console.error(err);
   alert("Fehler: " + (err?.message ?? err));
 });
+
